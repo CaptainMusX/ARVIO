@@ -108,6 +108,8 @@ import com.arflix.tv.ui.screens.player.PlayerUiState
 import com.arflix.tv.ui.screens.player.localizedText
 import com.arflix.tv.ui.screens.player.preview.SeekPreviewFrame
 import com.arflix.tv.ui.theme.ArflixTypography
+import com.arflix.tv.ui.theme.BackgroundDark
+import com.arflix.tv.ui.theme.ErrorRed
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -1088,7 +1090,7 @@ fun ArvioMobilePlayer(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF08090C))
+                    .background(BackgroundDark)
                     .zIndex(30f)
             ) {
                 // Top-left Close ('X') button so users can exit the player
@@ -1120,7 +1122,7 @@ fun ArvioMobilePlayer(
                     Icon(
                         imageVector = Icons.Outlined.ErrorOutline,
                         contentDescription = null,
-                        tint = Color(0xFFEF4444),
+                        tint = ErrorRed,
                         modifier = Modifier.size(42.dp)
                     )
                     Text(
@@ -1188,8 +1190,13 @@ fun ArvioMobilePlayer(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
+<<<<<<< HEAD
                                 text = stringResource(R.string.mplayer_reload_streams),
                                 color = Color(0xFF0B0C10),
+=======
+                                text = "Reload Streams",
+                                color = Color.Black,
+>>>>>>> 639b4cd1f (Unify background to pure black; tokenize player overlays and spotlight)
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
