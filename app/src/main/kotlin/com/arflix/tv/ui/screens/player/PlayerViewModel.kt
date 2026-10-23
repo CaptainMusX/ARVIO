@@ -3651,8 +3651,9 @@ class PlayerViewModel @Inject constructor(
 
     /**
      * Every switch to an external subtitle track — the user's or an automatic one — is lined up
-     * once against the video's embedded text track when the file has one. A running match scan
-     * owns its own timing, and a re-timed copy is already the result of a calibration.
+     * once: against the video's embedded text track when the file has one, else by the audio
+     * (when Sync by hearing is on). A running match scan owns its own timing, and a re-timed copy
+     * is already the result of a calibration.
      */
     private fun maybeAutoCalibrate(served: Subtitle) {
         if (served.isEmbedded || served.isBitmap) return
@@ -3663,7 +3664,7 @@ class PlayerViewModel @Inject constructor(
         lastCalibratedKey = key
         if (_uiState.value.autoSyncSubtitleKey == "${served.provider}|${served.id}") return
         if (audioSyncTarget?.let { it.provider == served.provider && it.id == served.id } == true) return
-        Log.i("SubMatch", "embedded calibration on track switch: \"${served.label}\"")
+        Log.i("SubMatch", "auto calibration on track switch: \"${served.label}\"")
         calibrateUserPick(served)
     }
 
@@ -3692,9 +3693,31 @@ class PlayerViewModel @Inject constructor(
             showSyncToast("This video has no embedded text subtitle to align to")
             return
         }
+        // The embedded track is the more exact reference: it replaces a running audio sync.
+        audioSyncWorkJob?.cancel()
+        audioSync?.stop()
+        audioSyncTarget = null
         lastCalibratedKey = calibrationKey(sub)
         showSyncToast("Aligning to the embedded subtitle…")
         calibrateUserPick(sub, embeddedOnly = true)
+    }
+
+    /**
+     * Subtitle menu: sync the current external subtitle to the audio (speech recognition). An
+     * explicit request, so it runs even when Sync by hearing or its fallback setting is off.
+     */
+    fun syncSubtitleToAudio() {
+        val sub = currentExternalSubtitle() ?: run {
+            showSyncToast("Pick an online subtitle first")
+            return
+        }
+        if (!BuildConfig.AUDIO_SYNC_AVAILABLE) {
+            showSyncToast("Sync by hearing isn't available in this build")
+            return
+        }
+        embeddedCalibrationJob?.cancel()
+        lastCalibratedKey = calibrationKey(sub)
+        calibrateUserPickByAudio(sub, force = true)
     }
 
     /** Cancel a running/queued "Find best match" scan and clear its transient state. */
@@ -6440,9 +6463,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     /** Created on first use (a scan), and never where sync by hearing can't run. */
-    private fun audioSyncOrNull(): com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync? {
+    private fun audioSyncOrNull(force: Boolean = false): com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync? {
         audioSyncInstance?.let { return it }
-        if (!hearingAvailable) return null
+        if (!hearingAvailable && !(force && BuildConfig.AUDIO_SYNC_AVAILABLE)) return null
         return com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync(
             context = context,
             scope = viewModelScope,
@@ -6591,6 +6614,10 @@ class PlayerViewModel @Inject constructor(
             single != null && kotlin.math.abs(single.scale - 1.0) < 1e-4 -> {
                 val offsetMs = kotlin.math.round(single.shiftMs).toLong()
                 Log.i("SubMatch", "audio sync: \"${sub.label}\" shifted ${offsetMs}ms")
+                if (userCalibrationKey == key) {
+                    userCalibrationKey = null
+                    showSyncToast("Subtitle synced to the audio: {0}", formatShift(offsetMs))
+                }
                 val local = localizeSubtitle(sub, raw)
                 applyAutoSync(sub, SubtitleAutoSync.ofMs(offsetMs))
                 if (_uiState.value.selectedSubtitle?.id != local.id || _uiState.value.selectedSubtitle?.url != local.url) {
@@ -6604,6 +6631,10 @@ class PlayerViewModel @Inject constructor(
                         model.segments.joinToString { "x${"%.4f".format(it.scale)} ${kotlin.math.round(it.shiftMs).toLong()}ms from ${it.fromMediaMs}ms" }
                 )
                 val rewritten = com.arflix.tv.ui.screens.player.audiosync.ArvioAudioSync.retime(raw, model)
+                if (userCalibrationKey == key) {
+                    userCalibrationKey = null
+                    showSyncToast("Subtitle re-timed to the audio")
+                }
                 applyAutoSync(sub, null)
                 selectSubtitle(localizeSubtitle(sub.copy(id = sub.id + RETIMED_SUBTITLE_ID_SUFFIX), rewritten), isUserAction = false)
             }
@@ -6614,7 +6645,9 @@ class PlayerViewModel @Inject constructor(
      * Lines an external subtitle up with the timing of the video's own embedded text track (any
      * language): the extractor-demuxed cues, plus the container index (Matroska Cues) when the
      * file has one. Timing alone is tried first; when it does not settle it, the translation model
-     * pairs lines that say the same thing. Nothing is changed when no confident match is found.
+     * pairs lines that say the same thing. When there is no embedded text track, or no confident
+     * match, the audio sync measures it instead ([calibrateUserPickByAudio]; only when Sync by
+     * hearing is on). With [embeddedOnly] (the menu action) the audio is not tried.
      */
     private var embeddedCalibrationJob: Job? = null
 
@@ -6631,6 +6664,7 @@ class PlayerViewModel @Inject constructor(
                 ?: SubtitleSyncMatcher.loadRaw(original.url, original.lang)
             if (raw == null) {
                 if (embeddedOnly) showSyncToast("Couldn't download the subtitle to align it")
+                else calibrateUserPickByAudio(pick)
                 return@launch
             }
             val cues = withContext(Dispatchers.Default) { SubtitleSyncMatcher.parseCues(raw) }
@@ -6681,18 +6715,80 @@ class PlayerViewModel @Inject constructor(
                         return@launch
                     }
                 } else if (attempt >= 3 && !sawReference) {
-                    break // No embedded text track to align to.
+                    break // No embedded text track: the audio has to do it.
                 }
                 if (embeddedOnly && attempt >= 6) break // The user is waiting on the menu action.
                 delay(EMBEDDED_CALIBRATION_INTERVAL_MS)
             }
             if (!stillMine()) return@launch
-            Log.i("SubMatch", "embedded calibration: no confident match for \"${original.label}\" (reference=$sawReference) — timing kept as authored")
             if (embeddedOnly) {
+                Log.i("SubMatch", "embedded calibration (menu): no confident match for \"${original.label}\" (reference=$sawReference)")
                 showSyncToast(
                     if (sawReference) "Couldn't match this subtitle to the embedded track's timing"
                     else "The embedded subtitle hasn't loaded yet; try again in a moment"
                 )
+                return@launch
+            }
+            Log.i("SubMatch", "embedded calibration: no confident match for \"${original.label}\" (reference=$sawReference) — trying the audio")
+            calibrateUserPickByAudio(pick)
+        }
+    }
+
+    /** The user's subtitle being calibrated by the audio (its url): its result is announced once. */
+    private var userCalibrationKey: String? = null
+
+    /**
+     * Times an external subtitle by the audio (speech detection), the fallback when the video has
+     * no embedded text track to align to. Runs only when Sync by hearing and its fallback setting
+     * are on, unless [force] (the "Sync to Audio" menu action), which needs only the build to
+     * include audio sync. Nothing is changed when no confident timing is found.
+     */
+    private fun calibrateUserPickByAudio(pick: Subtitle, force: Boolean = false) {
+        if (pick.isEmbedded || pick.isBitmap) return
+        if (!hearingAvailable && !force) {
+            Log.i("SubMatch", "audio calibration: Sync by hearing is off")
+            return
+        }
+        val sync = audioSyncOrNull(force) ?: run {
+            if (force) showSyncToast("Sync by hearing isn't available in this build")
+            return
+        }
+        if (!sync.canTakeOver && !force) {
+            Log.i("SubMatch", "audio calibration: audio sync fallback disabled in settings")
+            return
+        }
+        val original = _uiState.value.subtitles.firstOrNull {
+            !it.isEmbedded && it.provider == pick.provider && it.id == pick.id.removeSuffix(RETIMED_SUBTITLE_ID_SUFFIX)
+        } ?: pick
+        if (original.url.isBlank()) return
+        val streamUrl = _uiState.value.selectedStreamUrl
+        val lockedId = original.id
+        audioSyncWorkJob?.cancel()
+        audioSyncWorkJob = viewModelScope.launch {
+            val raw = (preloadedCopyFor(original)?.url?.let { SubtitleSyncMatcher.loadRaw(it, original.lang) })
+                ?: SubtitleSyncMatcher.loadRaw(original.url, original.lang)
+                ?: run {
+                    if (force) showSyncToast("Couldn't download the subtitle to align it")
+                    return@launch
+                }
+            val cues = withContext(Dispatchers.Default) { SubtitleSyncMatcher.parseCues(raw) }
+            if (_uiState.value.selectedStreamUrl != streamUrl || !isCurrentExternal(lockedId) || (!hearingAvailable && !force)) return@launch
+            armAudioSync()
+            audioSyncTarget = original
+            audioSyncRaw = raw
+            Log.i("SubMatch", "audio calibration: listening to time \"${original.label}\" (${cues.size} cues)")
+            userCalibrationKey = original.url
+            showSyncToast("Syncing the subtitle to the audio…")
+            val started = sync.takeOver(original.url, cues, onFailed = {
+                Log.i("SubMatch", "audio calibration: no confident timing for \"${original.label}\" — kept as authored")
+                if (userCalibrationKey == original.url) {
+                    userCalibrationKey = null
+                    showSyncToast("Audio sync couldn't confirm the timing; the subtitle keeps its own timing")
+                }
+            }, holdUntilConfirmed = false, force = force)
+            if (!started) {
+                userCalibrationKey = null
+                if (force) showSyncToast("Audio sync couldn't start for this subtitle")
             }
         }
     }

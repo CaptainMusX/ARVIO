@@ -667,6 +667,7 @@ fun MobileSubtitlesSheet(
     matchLanguageName: String = "",
     onFindBestMatch: () -> Unit = {},
     onAlignToEmbedded: () -> Unit = {},
+    onSyncToAudio: () -> Unit = {},
     isAiTranslating: Boolean = false,
     isAiAvailable: Boolean = false,
     aiTargetLanguageName: String = "",
@@ -978,14 +979,25 @@ fun MobileSubtitlesSheet(
                         }
                     }
 
-                    // Align the current online subtitle to the timing of the video's own embedded
-                    // text track (also runs automatically when an online track is picked).
+                    // The two timing tools for the current online subtitle: align it to the video's
+                    // own embedded text track, or sync it to the audio. Both also run automatically
+                    // when an online track is switched to (audio only with Sync by hearing on).
                     item {
                         NavRow(
                             label = "Align to Embedded Subtitle",
                             meta = "Embedded timing",
                             onClick = {
                                 onAlignToEmbedded()
+                                onClose()
+                            }
+                        )
+                    }
+                    item {
+                        NavRow(
+                            label = "Sync to Audio",
+                            meta = "Speech detection",
+                            onClick = {
+                                onSyncToAudio()
                                 onClose()
                             }
                         )

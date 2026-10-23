@@ -4128,6 +4128,7 @@ fun PlayerScreen(
                     viewModel.runFindBestMatch()
                 },
                 onAlignToEmbedded = { viewModel.alignSubtitleToEmbedded() },
+                onSyncToAudio = { viewModel.syncSubtitleToAudio() },
                 onActivateAiTranslation = {
                     viewModel.toggleAiTranslation()
                 },
