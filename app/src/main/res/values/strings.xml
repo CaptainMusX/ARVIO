@@ -1922,5 +1922,8 @@
     <string name="profile_parent_pin_set">Set a parent PIN for this kids profile</string>
     <string name="profile_parent_pin_enter">Parent PIN</string>
     <string name="profile_parent_pin_hint">4-5 digits. Needed to change or delete this kids profile, not to watch.</string>
+    <!-- Mobile player: pill shown while the screen is held for 3x playback. -->
+    <string name="player_hold_speed">3x speed · slide up to lock</string>
+    <string name="player_hold_speed_locked">3x speed locked · slide down to unlock</string>
 </resources>
 
