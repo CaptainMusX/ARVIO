@@ -73,7 +73,7 @@ import androidx.compose.material3.Icon
 
 internal enum class AppBottomBarMode {
     STANDARD,
-    LANDSCAPE_COMPACT,
+    LANDSCAPE_FLOATING_DOCK,
 }
 
 internal data class AppBottomBarSpec(
@@ -95,25 +95,24 @@ internal fun appBottomBarMode(
     screenHeightDp: Int,
 ): AppBottomBarMode = if (
     isTouchDevice &&
-    smallestScreenWidthDp < 600 &&
     screenWidthDp > screenHeightDp
 ) {
-    AppBottomBarMode.LANDSCAPE_COMPACT
+    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK
 } else {
     AppBottomBarMode.STANDARD
 }
 
 internal fun appBottomBarSpec(mode: AppBottomBarMode): AppBottomBarSpec = when (mode) {
-    AppBottomBarMode.LANDSCAPE_COMPACT -> AppBottomBarSpec(
-        itemHeightDp = 48,
-        rowVerticalPaddingDp = 2,
+    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK -> AppBottomBarSpec(
+        itemHeightDp = 52,
+        rowVerticalPaddingDp = 8,
         itemVerticalPaddingDp = 0,
-        itemSpacingDp = 1,
-        iconHorizontalPaddingDp = 10,
-        iconVerticalPaddingDp = 2,
-        iconSizeDp = 20,
-        indicatorSizeDp = 3,
-        labelFontSizeSp = 10,
+        itemSpacingDp = 0,
+        iconHorizontalPaddingDp = 0,
+        iconVerticalPaddingDp = 0,
+        iconSizeDp = 32,
+        indicatorSizeDp = 4,
+        labelFontSizeSp = 11,
     )
     AppBottomBarMode.STANDARD -> AppBottomBarSpec(
         itemHeightDp = 52,
@@ -127,6 +126,10 @@ internal fun appBottomBarSpec(mode: AppBottomBarMode): AppBottomBarSpec = when (
         labelFontSizeSp = 11,
     )
 }
+
+/** A roomy tablet dock that still leaves a consistent edge gap on smaller screens. */
+internal fun landscapeDockWidthDp(screenWidthDp: Int): Int =
+    (screenWidthDp - 32).coerceIn(280, 420)
 
 internal fun mobileContentInsets(systemBars: WindowInsets, showBottomBar: Boolean = false): WindowInsets =
     systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
@@ -174,11 +177,15 @@ val LocalBottomBarInset = staticCompositionLocalOf { 0.dp }
 val LocalBottomBarHeight = staticCompositionLocalOf { 0.dp }
 
 @Composable
-internal fun currentBottomBarSpec(): AppBottomBarSpec {
+internal fun currentAppBottomBarMode(): AppBottomBarMode {
     val config = LocalConfiguration.current
-    return appBottomBarSpec(appBottomBarMode(LocalDeviceType.current.isTouchDevice(),
-        config.smallestScreenWidthDp, config.screenWidthDp, config.screenHeightDp))
+    return appBottomBarMode(LocalDeviceType.current.isTouchDevice(),
+        config.smallestScreenWidthDp, config.screenWidthDp, config.screenHeightDp)
 }
+
+@Composable
+internal fun currentBottomBarSpec(): AppBottomBarSpec =
+    appBottomBarSpec(currentAppBottomBarMode())
 
 @Composable
 fun AppBottomBar(
@@ -187,14 +194,18 @@ fun AppBottomBar(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
 ) {
-    val spec = currentBottomBarSpec()
+    val mode = currentAppBottomBarMode()
+    val spec = appBottomBarSpec(mode)
+    val isFloatingDock = mode == AppBottomBarMode.LANDSCAPE_FLOATING_DOCK
     val accent = resolveAccentColor(fallback = Color.White)
     val barHeight = (spec.itemHeightDp ?: 52).dp
+    val dockWidth = landscapeDockWidthDp(LocalConfiguration.current.screenWidthDp).dp
+    val surfaceShape = if (isFloatingDock) RoundedCornerShape(18.dp) else RectangleShape
 
     val baseModifier = if (hazeState != null) {
         modifier.hazeChild(
             state = hazeState,
-            shape = RectangleShape,
+            shape = surfaceShape,
             style = HazeStyle(
                 tint = Color(0xCC000000), // 80% black tint
                 blurRadius = 24.dp,
@@ -207,60 +218,103 @@ fun AppBottomBar(
 
     Column(
         modifier = baseModifier
-            .fillMaxWidth()
-            .drawBehind {
+            .then(
+                if (isFloatingDock) {
+                    Modifier
+                        .width(dockWidth)
+                        .clip(surfaceShape)
+                        .border(0.5.dp, Color.White.copy(alpha = 0.12f), surfaceShape)
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .drawBehind {
                 // X-style subtle hairline top border
-                val strokeWidth = 0.5.dp.toPx()
-                drawLine(
-                    color = Color.White.copy(alpha = 0.12f),
-                    start = Offset(0f, strokeWidth / 2),
-                    end = Offset(size.width, strokeWidth / 2),
-                    strokeWidth = strokeWidth
-                )
-            }
-            .navigationBarsPadding()
+                            val strokeWidth = 0.5.dp.toPx()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.12f),
+                                start = Offset(0f, strokeWidth / 2),
+                                end = Offset(size.width, strokeWidth / 2),
+                                strokeWidth = strokeWidth
+                            )
+                        }
+                        .navigationBarsPadding()
+                }
+            )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(barHeight),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            bottomBarItems.filter { it.route != "tv" || !KidsNavigation.hideLiveTv }.forEach { item ->
-                val isSelected = currentRoute?.contains(item.route, ignoreCase = true) == true
-                var isFocused by remember { mutableStateOf(false) }
-                val label = stringResource(item.labelRes)
-                val iconColor by animateColorAsState(
-                    targetValue = if (isSelected || isFocused) accent else Color.White.copy(alpha = 0.55f),
-                    animationSpec = tween(180),
-                    label = "navigation_icon_color"
-                )
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(CircleShape)
-                        .selectable(
-                            selected = isSelected,
-                            role = Role.Tab,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = ripple(bounded = false, radius = 24.dp),
-                            onClick = { onNavigate(item.route) }
-                        )
-                        .onFocusChanged { isFocused = it.isFocused }
-                        .then(if (isFocused) Modifier.border(1.dp, accent, CircleShape) else Modifier),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = item.icon,
-                        contentDescription = label,
-                        tint = iconColor,
-                        modifier = Modifier.size(spec.iconSizeDp.dp)
+        val items = bottomBarItems.filter { it.route != "tv" || !KidsNavigation.hideLiveTv }
+        if (isFloatingDock) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = spec.rowVerticalPaddingDp.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items.forEach { item ->
+                    BottomBarItemButton(
+                        item,
+                        currentRoute,
+                        onNavigate,
+                        spec,
+                        accent,
+                        Modifier.weight(1f).height(barHeight)
                     )
                 }
             }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(barHeight),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                items.forEach { item ->
+                    BottomBarItemButton(item, currentRoute, onNavigate, spec, accent, Modifier.weight(1f).fillMaxHeight())
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun BottomBarItemButton(
+    item: BottomBarItem,
+    currentRoute: String?,
+    onNavigate: (String) -> Unit,
+    spec: AppBottomBarSpec,
+    accent: Color,
+    modifier: Modifier,
+) {
+    val isSelected = currentRoute?.contains(item.route, ignoreCase = true) == true
+    var isFocused by remember { mutableStateOf(false) }
+    val label = stringResource(item.labelRes)
+    val iconColor by animateColorAsState(
+        targetValue = if (isSelected || isFocused) accent else Color.White.copy(alpha = 0.55f),
+        animationSpec = tween(180),
+        label = "navigation_icon_color"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .selectable(
+                selected = isSelected,
+                role = Role.Tab,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = false, radius = 24.dp),
+                onClick = { onNavigate(item.route) }
+            )
+            .onFocusChanged { isFocused = it.isFocused }
+            .then(if (isFocused) Modifier.border(1.dp, accent, CircleShape) else Modifier),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = item.icon,
+            contentDescription = label,
+            tint = iconColor,
+            modifier = Modifier.size(spec.iconSizeDp.dp)
+        )
     }
 }

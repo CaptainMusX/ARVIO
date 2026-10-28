@@ -49,6 +49,8 @@ import dev.chrisbanes.haze.haze
 import com.arflix.tv.ui.components.LocalBottomBarInset
 import com.arflix.tv.ui.components.LocalBottomBarHeight
 import com.arflix.tv.ui.components.mobileContentInsets
+import com.arflix.tv.ui.components.AppBottomBarMode
+import com.arflix.tv.ui.components.currentAppBottomBarMode
 import com.arflix.tv.ui.components.currentBottomBarSpec
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -809,6 +811,8 @@ fun ArflixApp(
     }
 
     val density = LocalDensity.current
+    val barMode = currentAppBottomBarMode()
+    val isFloatingLandscapeDock = barMode == AppBottomBarMode.LANDSCAPE_FLOATING_DOCK
     val barSpec = currentBottomBarSpec()
     val navigationInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
     var measuredBarHeight by remember(barSpec, density.fontScale) { mutableStateOf(0.dp) }
@@ -817,7 +821,7 @@ fun ArflixApp(
     var settleJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val hazeState = remember { HazeState() }
 
-    val isScrollAwayRoute = isMobile && showBottomBar
+    val isScrollAwayRoute = isMobile && showBottomBar && !isFloatingLandscapeDock
 
     val mainScreenBottomBarOffsets = remember { mutableMapOf<String, Float>() }
     val currentMainRoute = remember(currentRoute) {
@@ -841,8 +845,8 @@ fun ArflixApp(
         }
     }
 
-    val barInset = if (showBottomBar) navigationInset else 0.dp
-    val fullBarHeight = if (showBottomBar) {
+    val barInset = if (showBottomBar && !isFloatingLandscapeDock) navigationInset else 0.dp
+    val fullBarHeight = if (showBottomBar && !isFloatingLandscapeDock) {
         maxOf(measuredBarHeight, (barSpec.itemHeightDp ?: 52).dp + navigationInset)
     } else 0.dp
 
@@ -1017,7 +1021,9 @@ fun ArflixApp(
             exit = androidx.compose.animation.slideOutVertically(
                 animationSpec = androidx.compose.animation.core.tween(220, easing = androidx.compose.animation.core.FastOutSlowInEasing)
             ) { it },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .then(if (isFloatingLandscapeDock) Modifier.padding(bottom = navigationInset + 16.dp) else Modifier)
         ) {
             AppBottomBar(
                 currentRoute = currentRoute,
@@ -1037,13 +1043,13 @@ fun ArflixApp(
                 },
                 hazeState = hazeState,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .then(if (!isFloatingLandscapeDock) Modifier.fillMaxWidth() else Modifier)
                     .onSizeChanged {
                         measuredBarHeight = with(density) { it.height.toDp() }
                         measuredBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
-                        translationY = bottomBarOffsetPx
+                        if (!isFloatingLandscapeDock) translationY = bottomBarOffsetPx
                     }
             )
         }

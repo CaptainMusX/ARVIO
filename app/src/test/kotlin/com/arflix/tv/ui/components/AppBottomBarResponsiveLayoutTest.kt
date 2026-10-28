@@ -14,7 +14,7 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun landscapePhoneUsesCompactBottomBar() {
+    fun landscapePhoneUsesFloatingDock() {
         val mode = appBottomBarMode(
             isTouchDevice = true,
             smallestScreenWidthDp = 411,
@@ -22,16 +22,22 @@ class AppBottomBarResponsiveLayoutTest {
             screenHeightDp = 360,
         )
 
-        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_COMPACT)
+        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
     }
 
     @Test
-    fun compactBottomBarKeepsTouchTargetsButUsesLessHeight() {
-        val spec = appBottomBarSpec(AppBottomBarMode.LANDSCAPE_COMPACT)
+    fun floatingDockKeepsTheStandardTouchTargetAndIconSize() {
+        val spec = appBottomBarSpec(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
 
-        assertThat(spec.itemHeightDp).isEqualTo(48)
-        assertThat(spec.iconSizeDp).isEqualTo(20)
-        assertThat(spec.labelFontSizeSp).isEqualTo(10)
+        assertThat(spec.itemHeightDp).isEqualTo(52)
+        assertThat(spec.iconSizeDp).isEqualTo(32)
+        assertThat(spec.labelFontSizeSp).isEqualTo(11)
+    }
+
+    @Test
+    fun floatingDockIsWideOnTabletsButKeepsAnEdgeGapOnSmallerScreens() {
+        assertThat(landscapeDockWidthDp(1280)).isEqualTo(420)
+        assertThat(landscapeDockWidthDp(360)).isEqualTo(328)
     }
 
     @Test
@@ -47,7 +53,7 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun landscapeTabletKeepsStandardBottomBar() {
+    fun landscapeTabletUsesFloatingDock() {
         val mode = appBottomBarMode(
             isTouchDevice = true,
             smallestScreenWidthDp = 700,
@@ -55,7 +61,7 @@ class AppBottomBarResponsiveLayoutTest {
             screenHeightDp = 800,
         )
 
-        assertThat(mode).isEqualTo(AppBottomBarMode.STANDARD)
+        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
     }
 
     @Test
