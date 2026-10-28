@@ -90,6 +90,7 @@ test('provider JSON/XML/playlist text survives incorrect octet-stream MIME types
   for (const text of ['{"MediaSources":[{"Id":"version"}]}', '<MediaContainer size="0"/>', '#EXTM3U\nhttps://provider.example/live.ts']) {
     const api = proxy(() => new Response(text, { headers: { 'content-type': 'application/octet-stream' } }));
     assert.equal(await (await api.safeProxyFetch(new URL(publicUrl), {})).text(), text);
+    await flush();
     assert.equal(api.agents[0].destroyed, 1);
   }
 });

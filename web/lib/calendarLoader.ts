@@ -191,6 +191,7 @@ export async function loadCalendar(options: CalendarLoadOptions): Promise<Calend
   const timeJobs: Promise<void>[] = [];
   const requestedTimes = new Set<string>();
   const unavailableTimeSeasons = new Set<string>();
+  const unavailableTimeTitles = new Set<string>();
   const timeDeadlines = new Map<string, number>();
   const requestedSeasons = new Set<string>();
   const seasonTimes = new Map<string, ReturnType<typeof authoritativeEpisodeTime>>();
@@ -263,11 +264,14 @@ export async function loadCalendar(options: CalendarLoadOptions): Promise<Calend
     timeJobs.push(readTime(async () => {
       const seasonKey = `${release.item.id}:${release.season}`;
       const remaining = deadline - Date.now();
-      if (options.signal?.aborted || unavailableTimeSeasons.has(seasonKey) || remaining <= 0) return;
+      if (options.signal?.aborted || unavailableTimeTitles.has(titleKey) || unavailableTimeSeasons.has(seasonKey) || remaining <= 0) return;
       try {
         const time = authoritativeEpisodeTime(await bounded(() => options.episodeTime!(release.item, release.season!, release.episode!), { ...options, timeoutMs: Math.min(options.timeoutMs ?? 12_000, remaining) }));
         if (time && !options.signal?.aborted) { releases.set(release.id, { ...releases.get(release.id)!, ...time }); publish(); }
-      } catch { unavailableTimeSeasons.add(seasonKey); }
+      } catch (error) {
+        unavailableTimeSeasons.add(seasonKey);
+        if ((error as Error)?.message === "Calendar request timed out") unavailableTimeTitles.add(titleKey);
+      }
     }));
   };
   publish();

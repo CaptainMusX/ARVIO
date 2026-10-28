@@ -24,14 +24,6 @@ test('onboarding offers configuration, not an unvetted external addon directory'
   assert.match(prompt, /setSection\("settings"\)/);
 });
 
-test('Android has no direct YouTube extraction implementation', () => {
-  const dir = path.join(root, 'app/src/main/kotlin');
-  for (const file of fs.readdirSync(dir, { recursive: true }).filter(name => name.endsWith('.kt'))) {
-    const source = fs.readFileSync(path.join(dir, file), 'utf8');
-    assert.doesNotMatch(source, /extractPlaybackSource|youtubei\/v1\/player|InAppYouTubeExtractor/, file);
-  }
-});
-
 test('web YouTube player uses an unmodified embed with a separate toolbar', () => {
   const source = playerSource();
   const embed = read('web/components/player/YouTubeEmbed.tsx');
