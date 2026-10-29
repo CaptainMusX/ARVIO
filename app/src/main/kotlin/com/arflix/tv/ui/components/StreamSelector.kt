@@ -1598,8 +1598,8 @@ private fun presentSource(
     val languageBadge = streamLanguageBadge(namedLanguages, isMultiAudio, preferredLanguage)
     val languageLabel = when {
         // Chip text: the badge without its flag or globe ("DE +2").
-        languageBadge != null -> if (languageBadge.first().isLetter()) languageBadge
-            else languageBadge.substringAfter(' ')
+        languageBadge != null -> languageBadge.removeSuffix(" 🌐")
+            .let { if (it.first().isLetter()) it else it.substringAfter(' ') }
         hintedLanguage?.contains("dual", ignoreCase = true) == true ||
             hintedLanguage?.contains("multi", ignoreCase = true) == true -> "Multi-audio"
         !hintedLanguage.isNullOrBlank() -> hintedLanguage
