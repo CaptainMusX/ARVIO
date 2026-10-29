@@ -1642,7 +1642,7 @@ private fun presentSource(
         sizeBytes = getSizeBytes(stream),
         sortCached = isReady,
         sortDirect = isDirectStreamUrl(stream.url),
-        description = cleanStreamDescription(stream.description, rawTitle),
+        description = cleanStreamDescription(stream.description, rawTitle)?.let(::withEmojiPresentation),
         bitrateLabel = StreamRegexes.BITRATE.find(stream.description.orEmpty())
             ?.let { "${it.groupValues[1]} Mbps" },
         editionLabel = StreamRegexes.EDITION
@@ -1767,6 +1767,7 @@ private fun rowSubtitle(presentation: SourcePresentation): String {
     }
         .distinctBy { it.lowercase().replace(StreamSelectorRegexes.DISTINCT_TITLE_REGEX, "") }
         .joinToString(" · ")
+        .let(::withEmojiPresentation)
 }
 
 private fun languageBadgeText(language: String?): String? {
@@ -1908,7 +1909,7 @@ private fun BestMatchStrip(
             }
             Spacer(modifier = Modifier.height(5.dp))
             Text(
-                text = "${presentation.addonLabel} - ${presentation.rawTitle}",
+                text = withEmojiPresentation("${presentation.addonLabel} - ${presentation.rawTitle}"),
                 style = ArflixTypography.body.copy(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
                 color = TextPrimary,
                 maxLines = 1,
@@ -2236,7 +2237,7 @@ private fun OledSourceRow(
                     // Full filename, wrapped — an ellipsized release name hides exactly the
                     // parts that differentiate sources (edition, audio, group).
                     Text(
-                        text = presentation.rawTitle,
+                        text = withEmojiPresentation(presentation.rawTitle),
                         style = ArflixTypography.body.copy(
                             fontSize = 13.sp,
                             lineHeight = 17.sp,
@@ -2498,7 +2499,7 @@ private fun MobileStreamCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = presentation.rawTitle,
+                    text = withEmojiPresentation(presentation.rawTitle),
                     style = ArflixTypography.body.copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
                     color = TextPrimary,
                     modifier = Modifier.weight(1f)
@@ -2672,7 +2673,7 @@ private fun GlassyStreamCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = presentation.rawTitle,
+                        text = withEmojiPresentation(presentation.rawTitle),
                         style = ArflixTypography.body.copy(
                             fontSize = 13.sp,
                             fontWeight = if (isFocused) FontWeight.Bold else FontWeight.SemiBold,
