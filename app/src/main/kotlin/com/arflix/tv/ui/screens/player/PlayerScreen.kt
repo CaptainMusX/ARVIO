@@ -162,6 +162,7 @@ import com.arflix.tv.network.OkHttpProvider
 import com.arflix.tv.data.model.MediaType
 import com.arflix.tv.data.model.EpisodeIdentity
 import com.arflix.tv.data.model.StreamSource
+import com.arflix.tv.ui.screens.details.isAwaitingDebridDownload
 import com.arflix.tv.data.model.Subtitle
 import com.arflix.tv.ui.components.KeepScreenOn
 import com.arflix.tv.ui.components.LoadingIndicator
@@ -511,6 +512,8 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     var nextEpisodeTransitionInProgress by remember { mutableStateOf(false) }
     var placeholderCheckedSource by remember { mutableStateOf<String?>(null) }
     var placeholderHandledSource by remember { mutableStateOf<String?>(null) }
+    // The source and placeholder status last written to the failover log, so each change logs once.
+    var placeholderLoggedCheck by remember { mutableStateOf<String?>(null) }
     var loadedSource by remember { mutableStateOf<String?>(null) }
     var currentSourceIsLive by remember { mutableStateOf(args.isLiveStream) }
     var confirmedSource by remember { mutableStateOf<String?>(null) }
@@ -1006,9 +1009,22 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                 } ?: -1
 
             if (nextIndex < 0) {
+                sourceFailoverLog(
+                    "no next source after ${uiState.selectedStream.failoverSummary()} reason=$reason " +
+                        "sources=${streams.size} tried=${triedStreamIndexes.size} " +
+                        "blankUrl=${streams.count { it.url.isNullOrBlank() }} " +
+                        "awaitingDownload=${streams.count(::isAwaitingDebridDownload)} " +
+                        "notAutoplayable=${streams.count { !viewModel.isEligibleForAutomaticPlayback(it) }} " +
+                        "badHost=${streams.count { viewModel.isPlaybackHostTemporarilyBad(it) }} " +
+                        "skipAddon=${skipAddonId ?: "-"}"
+                )
                 viewModel.onFailoverAttempt(success = false)
                 false
             } else {
+                sourceFailoverLog(
+                    "switching source reason=$reason from=${uiState.selectedStream.failoverSummary()} " +
+                        "to=${streams[nextIndex].failoverSummary()} index=$currentStreamIndex->$nextIndex/${streams.size}"
+                )
                 viewModel.onFailoverAttempt(success = true)
                 autoAdvanceAttempts += 1
                 playbackStartupDiag(
@@ -3095,14 +3111,20 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                 (exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_ENDED)
             ) {
                 placeholderCheckedSource = checkedSource
-                if (playbackVideoStatus() == PlaybackVideoStatus.PLACEHOLDER &&
+                val videoStatus = playbackVideoStatus()
+                if ("$checkedSource|$videoStatus" != placeholderLoggedCheck) {
+                    placeholderLoggedCheck = "$checkedSource|$videoStatus"
+                    sourceFailoverLog(
+                        "placeholder check ${latestUiState.selectedStream.failoverSummary()} status=$videoStatus " +
+                            "durationMs=$duration expectedDurationMs=${latestUiState.expectedDurationMs} " +
+                            "metadataPending=${latestUiState.isLoadingPlaybackMetadata} " +
+                            "manual=$userSelectedSourceManually fallbackAllowed=$allowStartupSourceFallback"
+                    )
+                }
+                if (videoStatus == PlaybackVideoStatus.PLACEHOLDER &&
                     checkedSource != placeholderHandledSource
                 ) {
                     placeholderHandledSource = checkedSource
-                    playbackStartupDiag(
-                        "placeholder video durationMs=$duration expectedDurationMs=${latestUiState.expectedDurationMs} " +
-                            "manual=$userSelectedSourceManually"
-                    )
                     if (!userSelectedSourceManually &&
                         allowStartupSourceFallback &&
                         tryAdvanceToNextStream(reason = context.getString(R.string.player_fail_source_not_ready))
@@ -7347,6 +7369,23 @@ private fun isLikelyDolbyVisionStream(stream: StreamSource?): Boolean {
 }
 
 private const val PLAYER_SCREEN_DIAGNOSTICS = true
+
+/**
+ * Why a source was skipped, or why none was left to switch to. A started source gets a
+ * "placeholder check" line each time its status changes (pending, real, placeholder); a source
+ * with no such line never reached a playable state. Warning
+ * level because R8 strips Log.i/d/v from release builds. No URLs, only their host.
+ */
+private fun sourceFailoverLog(message: String) {
+    android.util.Log.w("PlayerSourceFailover", message)
+}
+
+private fun StreamSource?.failoverSummary(): String {
+    if (this == null) return "none"
+    val host = runCatching { java.net.URI(url.orEmpty()).host }.getOrNull() ?: "-"
+    val name = source.replace(Regex("""\s+"""), " ").take(60)
+    return "[$addonId/$quality/${size.ifBlank { "-" }}/host=$host/\"$name\"]"
+}
 
 private fun playbackStartupDiag(message: String) {
     if (PLAYER_SCREEN_DIAGNOSTICS) {
