@@ -79,7 +79,7 @@ class KeyframeWorkerDeviceTest {
                         "cold-range-${SystemClock.elapsedRealtime()}-$round", 32_000,
                         false, false, useNativeKeyframes = true))
                     val start = SystemClock.elapsedRealtime()
-                    val frame = provider.frameAt(target)
+                    val frame = provider.frameAt(target, playbackPaused = true)
                     val centerMs = SystemClock.elapsedRealtime() - start
                     val centerBytes = transferred.get() - bytesBefore
                     assertNotNull("Uncached 4K target must decode", frame)
@@ -137,7 +137,7 @@ class KeyframeWorkerDeviceTest {
                 val first = worker.frameAt(url, 12_000, bytes.size.toLong())
                 assertNotNull(first)
                 val headersBefore = ranges.count { it.first == 0 }
-                val second = worker.frameAt(url, 20_000, bytes.size.toLong())
+                val second = worker.frameAt(url, 20_000, bytes.size.toLong(), playbackPaused = true)
                 assertNotNull(second)
                 assertEquals("A second seek must retain the demuxer", headersBefore, ranges.count { it.first == 0 })
                 assertTrue(kotlin.math.abs(second!!.positionMs - 20_000) <= 5_000)

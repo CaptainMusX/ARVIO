@@ -427,8 +427,8 @@ class SeekPreviewFrameProvider internal constructor(
         if (closed || active !== source) emptyList() else frames
     }
 
-    suspend fun frameAt(positionMs: Long, cacheOnly: Boolean = false): SeekPreviewFrame? =
-        requestFrame(positionMs, cacheOnly, background = false)
+    suspend fun frameAt(positionMs: Long, cacheOnly: Boolean = false, playbackPaused: Boolean = false): SeekPreviewFrame? =
+        requestFrame(positionMs, cacheOnly, background = false, playbackPaused = playbackPaused)
 
     /** Only call when playback is stable. Foreground work preempts warming, never the reverse. */
     suspend fun warmAround(positionMs: Long, direction: Int = 1) {
@@ -548,7 +548,7 @@ class SeekPreviewFrameProvider internal constructor(
                         else MAX_EXTRACTION_NETWORK_BYTES
                         origin = SeekPreviewOrigin.DECODER
                         image = decoderOverride?.invoke(source.source, decodePosition(source, target))
-                            ?: if (source.source.useNativeKeyframes) extractNativeKeyframe(source, target)
+                            ?: if (source.source.useNativeKeyframes) extractNativeKeyframe(source, target, playbackPaused)
                             else extractWithMedia3(source, target)
                     }
                     currentCoroutineContext().ensureActive()
@@ -734,11 +734,11 @@ class SeekPreviewFrameProvider internal constructor(
         }
     }
 
-    private suspend fun extractNativeKeyframe(source: ActiveSource, target: Long): SeekPreviewImage {
+    private suspend fun extractNativeKeyframe(source: ActiveSource, target: Long, playbackPaused: Boolean): SeekPreviewImage {
         val uri = localDecoderUri(source)
         source.proxy?.beginRequest(source.extractionBudgetBytes)
         return try {
-            keyframeWorker.frameAt(uri.toString(), decodePosition(source, target), source.proxy?.contentLength ?: -1)?.let {
+            keyframeWorker.frameAt(uri.toString(), decodePosition(source, target), source.proxy?.contentLength ?: -1, playbackPaused)?.let {
                 SeekPreviewImage(it.bitmap, actualPositionMs = it.positionMs)
             } ?: throw IOException("Native preview unavailable")
         } finally { source.proxy?.endRequest() }
@@ -927,7 +927,9 @@ internal class SeekPreviewDiskCache(private val root: File, private val limitByt
 
     fun contains(key: String): Boolean = File(root, "$key.preview").isFile
 
-    @Synchronized fun read(key: String, identity: String): CachedPreview? {
+    // Writers publish complete immutable entries by rename. Reads must not wait
+    // behind JPEG compression or pruning unrelated files on slow TV storage.
+    fun read(key: String, identity: String): CachedPreview? {
         val file = File(root, "$key.preview")
         if (!file.isFile || file.length() !in 1..MAX_CACHE_ENTRY_BYTES) return null
         return try {
@@ -944,10 +946,10 @@ internal class SeekPreviewDiskCache(private val root: File, private val limitByt
                 CachedPreview(bitmap, metadata)
             }
         } catch (failure: OutOfMemoryError) {
-            file.delete()
             throw failure
         } catch (_: Exception) {
-            file.delete()
+            // A concurrent eviction is a cache miss. Do not delete by pathname:
+            // another writer may already have replaced the entry we opened.
             null
         }
     }

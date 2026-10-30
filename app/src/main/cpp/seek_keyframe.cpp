@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <sys/resource.h>
+#include <unistd.h>
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -31,6 +32,7 @@ struct Session {
     int64_t origin = 0;
     int64_t position = 0;
     int64_t size = 0;
+    bool pausedDecoder = false;
     ~Session() { reset(); }
     void reset() {
         sws_freeContext(scaler); scaler = nullptr;
@@ -172,11 +174,22 @@ bool openSource(const std::string& url, int64_t size) {
     }
     if (parameters->width <= 0 || parameters->height <= 0 ||
         int64_t(parameters->width) * parameters->height > 3840LL * 2160LL) return false;
+    session.origin = stream->start_time == AV_NOPTS_VALUE ? 0 : stream->start_time;
+    session.url = url;
+    return true;
+}
+
+bool openDecoder(bool playbackPaused) {
+    if (session.codec && session.pausedDecoder == playbackPaused) return true;
+    // Recreate only the decoder on a scheduling-mode transition. Keep the
+    // demuxer/index and byte cache, and never add another simultaneous decoder.
+    avcodec_free_context(&session.codec);
+    auto* parameters = session.format->streams[session.stream]->codecpar;
     const AVCodec* codec = avcodec_find_decoder(parameters->codec_id);
     if (!codec) return false;
     session.codec = avcodec_alloc_context3(codec);
     if (!session.codec || avcodec_parameters_to_context(session.codec, parameters) < 0) return false;
-    session.codec->thread_count = 2;
+    session.codec->thread_count = playbackPaused ? int(std::clamp(sysconf(_SC_NPROCESSORS_ONLN), 1L, 4L)) : 2;
     session.codec->max_pixels = 3840LL * 2160LL;
     session.codec->thread_type = FF_THREAD_SLICE;
     // At 320px, deblocking the full 4K image adds latency without useful detail.
@@ -185,8 +198,7 @@ bool openSource(const std::string& url, int64_t size) {
     if (avcodec_open2(session.codec, codec, nullptr) < 0) return false;
     for (unsigned i = 0; i < session.format->nb_streams; ++i)
         if (int(i) != session.stream) session.format->streams[i]->discard = AVDISCARD_ALL;
-    session.origin = stream->start_time == AV_NOPTS_VALUE ? 0 : stream->start_time;
-    session.url = url;
+    session.pausedDecoder = playbackPaused;
     return true;
 }
 }
@@ -203,8 +215,10 @@ Java_com_arflix_tv_ui_screens_player_preview_KeyframeNative_close(JNIEnv*, jobje
 
 extern "C" JNIEXPORT jobject JNICALL
 Java_com_arflix_tv_ui_screens_player_preview_KeyframeNative_frame(
-    JNIEnv* env, jobject, jstring address, jlong position, jlong id, jlong size) {
-    setpriority(PRIO_PROCESS, 0, 19);
+    JNIEnv* env, jobject, jstring address, jlong position, jlong id, jlong size, jboolean playbackPaused) {
+    // A user is waiting while main playback is paused. Speculation while video
+    // plays retains the lowest priority and the smaller worker pool.
+    setpriority(PRIO_PROCESS, 0, playbackPaused ? 0 : 19);
     av_max_alloc(32 * 1024 * 1024);
     av_log_set_level(AV_LOG_QUIET); // FFmpeg errors can include signed resource addresses.
     const char* chars = env->GetStringUTFChars(address, nullptr);
@@ -217,7 +231,7 @@ Java_com_arflix_tv_ui_screens_player_preview_KeyframeNative_frame(
     session.request = id;
     session.deadline = nowMs() + 8000;
     if (interrupted(&session)) return nullptr;
-    if (!openSource(url, size)) { session.reset(); return nullptr; }
+    if (!openSource(url, size) || !openDecoder(playbackPaused)) { session.reset(); return nullptr; }
     openMs = nowMs() - started;
     auto phaseStarted = nowMs();
     auto* stream = session.format->streams[session.stream];
@@ -294,9 +308,10 @@ Java_com_arflix_tv_ui_screens_player_preview_KeyframeNative_frame(
         break;
     }
     if (!interrupted(&session)) __android_log_print(ANDROID_LOG_INFO, "SeekPreviewNative",
-        "targetMs=%lld ready=%d openMs=%lld seekMs=%lld readMs=%lld decodeMs=%lld scaleMs=%lld",
+        "targetMs=%lld ready=%d openMs=%lld seekMs=%lld readMs=%lld decodeMs=%lld scaleMs=%lld paused=%d threads=%d nice=%d",
         (long long)position, output != nullptr, (long long)openMs, (long long)seekMs,
-        (long long)readMs, (long long)decodeMs, (long long)scaleMs);
+        (long long)readMs, (long long)decodeMs, (long long)scaleMs,
+        int(playbackPaused), session.codec ? session.codec->thread_count : 0, getpriority(PRIO_PROCESS, 0));
     av_packet_free(&packet);
     av_frame_free(&frame);
     if (!output) session.reset(); // Interrupted AVIO must not poison the next request.

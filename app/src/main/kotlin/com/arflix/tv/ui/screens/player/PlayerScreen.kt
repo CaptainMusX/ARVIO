@@ -1894,7 +1894,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         }
         if (previewStatus.capability == SeekPreviewCapability.UNAVAILABLE) return@LaunchedEffect
         delay(SEEK_PREVIEW_DEBOUNCE_MS)
-        val frame = loadSeekPreviewFrame(seekPreviewProvider, previewTarget)
+        val frame = loadSeekPreviewFrame(seekPreviewProvider, previewTarget, playbackPaused = !exoPlayer.playWhenReady)
         if (frame != null && seekPreviewProvider.matchesTarget(frame, previewTarget)) {
             seekPreviewFrame = frame
             seekPreviewProvider.warmWindow(previewTarget)
