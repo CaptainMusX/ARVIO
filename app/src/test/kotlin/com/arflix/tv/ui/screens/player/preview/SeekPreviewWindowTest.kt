@@ -4,6 +4,25 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SeekPreviewWindowTest {
+    @Test fun nativePreparationKeepsFourSecondReserveAndCooldown() {
+        val guard = SeekPreviewPlaybackGuard()
+        fun sample(time: Long, buffered: Long = 5_000, minimum: Long = 4_000) =
+            guard.mayWarm(time, true, true, buffered, false, true, true, minimum)
+        assertFalse(sample(0))
+        assertTrue(sample(8_000))
+        assertFalse(sample(8_250, 3_999))
+        assertFalse(sample(9_000, 3_999, 0))
+        assertFalse(sample(10_000))
+        assertTrue(sample(18_000))
+        guard.onPlaybackStrain(18_000)
+        guard.onPlaybackInterrupted()
+        assertFalse(sample(47_999))
+        assertFalse(sample(48_000))
+        assertTrue(sample(56_000))
+        guard.onPlaybackInterrupted()
+        assertFalse(sample(56_001))
+        assertTrue(sample(64_001))
+    }
     @Test fun neighborsPrioritizeBothForwardSlotsAndRespectEdges() {
         assertEquals(listOf(70_000L, 80_000L, 50_000L, 40_000L), seekPreviewNeighborTargets(60_000, 120_000))
         assertEquals(listOf(10_000L, 20_000L), seekPreviewNeighborTargets(0, 120_000))

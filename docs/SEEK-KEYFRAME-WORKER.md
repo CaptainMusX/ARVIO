@@ -508,3 +508,53 @@ Evidence: `artifacts/tv-prestart-timing.log`,
 `artifacts/tv-prestart-worker-before-seek.txt`,
 `artifacts/tv-prestart-final-steady-*.txt`, `artifacts/tv-prestart-cached.png`,
 and `artifacts/tv-prestart-installed-sha256.txt`.
+
+### Preparing multi-minute 4K targets during playback (30 October 2026)
+
+The physical-TV diagnostic run established why preparation had not been running:
+the 86.41-GB remux generally had only 3.7–7.6 seconds buffered. An occasional
+higher sample did not satisfy eight continuous healthy seconds above the old
+eight-second reserve. Native support, memory classification and unmetered network
+checks all passed, but no frame preparation ran. Twelve baseline frame-presentation
+samples were 23.94–24.01 fps with no gaps over 100 ms.
+
+The isolated, low-priority native worker now uses a four-second minimum reserve,
+still requiring eight seconds of healthy playback before eligibility. A new
+native preparation job starts only while the main player is not loading. The
+250-ms monitor cancels work when eligibility is lost. Image-provider and Media3
+paths retain their eight-second threshold; low-memory and metered-device
+restrictions remain. Playback-strain cooldown survives effect restarts, while
+interruptions reset the healthy-playback timer. A native preparation job may
+read up to eight MiB (the observed first 4K frame required 4.68 MiB); the total
+128-MiB speculative budget remains. The main playback buffer is unchanged.
+
+After the initial local strip, preparation alternates local detail with stable
+distant points: +5, +10, +20 minutes, additional landmarks and neighboring frames,
+then 30-second gaps followed by finer ten-second coverage. The anchor uses a
+30-second grid and remains stable for up to five minutes, allowing distant strips
+to finish before priority points move. A rewind or a jump beyond that window
+reanchors it. This is gradual bounded coverage, not an instant full-film storyboard.
+
+All 131 preview JVM tests pass, including moving-playhead distant-strip coverage,
+budget/EOF constraints, reserve cancellation, cooldown persistence and reset.
+In the first physical-TV preparation run, 47 frames were prepared before seeking,
+using 81.35 MiB of additional media reads. +5/+10/+20-minute centers became ready
+55.2 / 61.2 / 69.2 seconds after the first playing-state sample. Later selection
+of those targets displayed timestamp-validated memory frames in 27 / 41 / 20 ms.
+Actual seeks between test positions were approximately +2 / +5 / +10 minutes;
+the +5/+10/+20 labels refer to the original preparation anchor. Eighteen advancing
+presentation samples during preparation were 23.94–24.01 fps with a largest gap
+of 66.64 ms, none over 100 ms, and no logged dropped-frame batches or audio
+underruns. Playback resumed successfully afterward. These are sampled results
+on one real 4K source, not a guarantee for every device, network or uncached point.
+
+That first run used a two-minute anchor lifetime and left one neighbor at the
+farthest point incomplete before seeking. The final five-minute lifetime addresses
+that coverage churn; the regression test checks that all three distant strips
+and intermediate coverage are prepared while playback advances.
+
+Evidence: `artifacts/tv-ahead-diagnostic-timing.log`,
+`artifacts/tv-ahead-baseline-measured-report.json`,
+`artifacts/tv-ahead-timing.log`, `artifacts/tv-ahead-measured-report.json`,
+`artifacts/tv-ahead-final-steady-*.txt`, `artifacts/tv-ahead-jump*.png`,
+and `artifacts/preview-ahead-build5.log`.

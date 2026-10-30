@@ -71,6 +71,7 @@ internal const val RANGE_CHUNK_BYTES = 1024 * 1024
 private const val RANGE_MEMORY_LIMIT_BYTES = 8 * 1024 * 1024
 private const val MAX_EXTRACTION_NETWORK_BYTES = 16L * 1024L * 1024L
 internal const val BACKGROUND_PREVIEW_NETWORK_BYTES = 4L * 1024L * 1024L
+internal const val NATIVE_BACKGROUND_PREVIEW_NETWORK_BYTES = 8L * 1024L * 1024L
 internal const val SEEK_PREVIEW_REQUEST_TIMEOUT_MS = 10_000L
 private const val MEDIA3_FRAME_TIMEOUT_MS = 6_000L
 
@@ -462,8 +463,8 @@ class SeekPreviewFrameProvider internal constructor(
     fun endSeekGesture() { active?.coverage?.endGesture() }
 
     /** Cooperatively cancelled by the player's buffer/strain monitor; never parallel decoders. */
-    suspend fun warmPlayback(positionMs: Long, bufferedMs: Long) {
-        if (bufferedMs < 8_000) return
+    suspend fun warmPlayback(positionMs: Long, bufferedMs: Long, minimumBufferedMs: Long = 8_000L) {
+        if (bufferedMs < minimumBufferedMs.coerceAtLeast(4_000L)) return
         val source = active ?: return
         val foreground = synchronized(lock) { source.foregroundRequest }
         val imageOnly = source.images != null
@@ -551,10 +552,14 @@ class SeekPreviewFrameProvider internal constructor(
                     // never escalate into a decoder while constrained/heavy playback is active.
                     if (image == null && background && source.images != null) return@withTimeout null
                     if (image == null && source.source.allowExtraction && !source.source.isAdaptive && !source.decoderDisabled) {
+                        // A 4K random-access frame plus container headers can exceed
+                        // four MiB. Keep a per-job ceiling and the total sparse budget.
+                        val backgroundBudget = if (source.source.useNativeKeyframes)
+                            NATIVE_BACKGROUND_PREVIEW_NETWORK_BYTES else BACKGROUND_PREVIEW_NETWORK_BYTES
                         source.extractionBudgetBytes = if (wideCoverage)
-                            minOf(BACKGROUND_PREVIEW_NETWORK_BYTES,
+                            minOf(backgroundBudget,
                                 (PREVIEW_SPECULATIVE_BYTES - source.speculativeBytes.get()).coerceAtLeast(0))
-                        else if (background && !playbackPaused) BACKGROUND_PREVIEW_NETWORK_BYTES
+                        else if (background && !playbackPaused) backgroundBudget
                         else MAX_EXTRACTION_NETWORK_BYTES
                         origin = SeekPreviewOrigin.DECODER
                         image = decoderOverride?.invoke(source.source, decodePosition(source, target))

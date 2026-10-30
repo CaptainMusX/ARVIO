@@ -1957,11 +1957,12 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
             }
         }
     }
+    val previewPlaybackGuard = remember(previewStatus.sourceGeneration) { SeekPreviewPlaybackGuard() }
     LaunchedEffect(hasPlaybackStarted, isBuffering, isPlaying, seekInteraction.phase,
         previewStatus.sourceGeneration, isCasting) {
         if (!hasPlaybackStarted || isBuffering || !isPlaying || seekInteraction.browsing ||
             args.isLiveStream || isCasting) return@LaunchedEffect
-        val guard = SeekPreviewPlaybackGuard()
+        val guard = previewPlaybackGuard
         val connectivity = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val previewPlaybackListener = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
@@ -1978,12 +1979,14 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         exoPlayer.addAnalyticsListener(previewPlaybackListener)
         var warming: Job? = null
         var nextWarmAt = 0L
+        var nextDiagnosticAt = 0L
         try {
             while (!playerReleased) {
                 val now = android.os.SystemClock.elapsedRealtime()
                 val format = exoPlayer.videoFormat
                 val imageOnly = uiState.selectedStream?.preview != null
                 val nativeSafe = useNativeSeekKeyframes && allowSecondarySeekPreviewDecoder && !isLowRamPlaybackDevice
+                val minimumPreviewBufferMs = if (nativeSafe && !imageOnly) 4_000L else 8_000L
                 val resourceSafe = imageOnly || nativeSafe || (!isLowRamPlaybackDevice && !isConstrainedPlaybackDevice && playbackMemoryClassMb >= 256 &&
                     !isLikelyHeavyStream(uiState.selectedStream) && format != null &&
                     format.width in 1..1920 && format.height in 1..1080 &&
@@ -1992,19 +1995,26 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     exoPlayer.playbackState == Player.STATE_READY && exoPlayer.playerError == null,
                     exoPlayer.totalBufferedDuration, latestSeekBrowsing,
                     lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED),
-                    resourceSafe && !connectivity.isActiveNetworkMetered)
+                    resourceSafe && !connectivity.isActiveNetworkMetered, minimumPreviewBufferMs)
+                if (now >= nextDiagnosticAt) {
+                    nextDiagnosticAt = now + 10_000L
+                    android.util.Log.println(android.util.Log.INFO, "SeekPreviewPlayback",
+                        "preparation safe=$safe bufferedMs=${exoPlayer.totalBufferedDuration} loading=${exoPlayer.isLoading} native=$nativeSafe lowRam=$isLowRamPlaybackDevice metered=${connectivity.isActiveNetworkMetered}")
+                }
                 if (!safe && warming?.isActive == true) {
                     warming?.cancel()
                     seekPreviewProvider.cancelPending()
-                } else if (safe && warming?.isActive != true && now >= nextWarmAt) {
+                } else if (safe && warming?.isActive != true && now >= nextWarmAt &&
+                    (imageOnly || !nativeSafe || !exoPlayer.isLoading)) {
                     val buffered = exoPlayer.totalBufferedDuration
                     nextWarmAt = now + if (imageOnly) 1_000L else if (buffered >= 30_000L) 2_000L else 3_000L
-                    warming = launch { seekPreviewProvider.warmPlayback(exoPlayer.currentPosition, buffered) }
+                    warming = launch { seekPreviewProvider.warmPlayback(exoPlayer.currentPosition, buffered, minimumPreviewBufferMs) }
                 }
                 delay(250L)
             }
         } finally {
             warming?.cancel()
+            guard.onPlaybackInterrupted()
             exoPlayer.removeAnalyticsListener(previewPlaybackListener)
             // A new foreground request owns cancellation while entering paused browsing.
             if (!latestSeekBrowsing) seekPreviewProvider.cancelPending()
