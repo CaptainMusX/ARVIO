@@ -75,6 +75,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1087,29 +1088,41 @@ class PlayerViewModel @Inject constructor(
                 homeServerAppendJob?.cancel()
                 if (!isYouTubeVideo() && streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.HOME_SERVER)) {
                     homeServerAppendJob = launch {
-                        runCatching {
-                            appendHomeServerSourcesInBackground(
-                                mediaType = mediaType,
-                                imdbId = currentImdbId,
-                                seasonNumber = seasonNumber,
-                                episodeNumber = episodeNumber,
-                                timeoutMs = 20_000L
+                        try {
+                            runCatching {
+                                appendHomeServerSourcesInBackground(
+                                    mediaType = mediaType,
+                                    imdbId = currentImdbId,
+                                    seasonNumber = seasonNumber,
+                                    episodeNumber = episodeNumber,
+                                    timeoutMs = 20_000L
+                                )
+                            }.onFailure(childFailed("homeServerAppend"))
+                        } finally {
+                            if (currentCoroutineContext().isActive) finishSupplementalSourceLookupIfReady(
+                                currentCoroutineContext()[Job], PlayerMessage.Res(R.string.player_error_no_streams_media_servers)
                             )
-                        }.onFailure(childFailed("homeServerAppend"))
+                        }
                     }
                 }
                 vodAppendJob?.cancel()
                 if (!isYouTubeVideo() && streamIntegrationRepository.isIntegrationEnabled(StreamIntegrationType.IPTV_VOD)) {
                     vodAppendJob = launch {
-                        runCatching {
-                            appendVodSourceInBackground(
-                                mediaType = mediaType,
-                                imdbId = currentImdbId,
-                                seasonNumber = seasonNumber,
-                                episodeNumber = episodeNumber,
-                                timeoutMs = 15_000L
+                        try {
+                            runCatching {
+                                appendVodSourceInBackground(
+                                    mediaType = mediaType,
+                                    imdbId = currentImdbId,
+                                    seasonNumber = seasonNumber,
+                                    episodeNumber = episodeNumber,
+                                    timeoutMs = 15_000L
+                                )
+                            }.onFailure(childFailed("vodAppend"))
+                        } finally {
+                            if (currentCoroutineContext().isActive) finishSupplementalSourceLookupIfReady(
+                                currentCoroutineContext()[Job], PlayerMessage.Res(R.string.player_error_no_streams_other_source)
                             )
-                        }.onFailure(childFailed("vodAppend"))
+                        }
                     }
                 }
                 // Fetch metadata in background
@@ -8170,10 +8183,11 @@ class PlayerViewModel @Inject constructor(
         _uiState.value.selectedStreamUrl.isNullOrBlank() && streamSelectionJob?.isActive != true
 
     private fun sourceLookupStillActive(currentJob: Job? = null): Boolean {
-        val supplementalStillLoading =
-            (homeServerAppendJob != null && homeServerAppendJob !== currentJob && homeServerAppendJob?.isActive == true) ||
-                (vodAppendJob != null && vodAppendJob !== currentJob && vodAppendJob?.isActive == true)
-        return !primaryStreamResolutionFinal || supplementalStillLoading
+        return playerSourceLookupActive(
+            primaryFinished = primaryStreamResolutionFinal,
+            homeServerActive = homeServerAppendJob !== currentJob && homeServerAppendJob?.isActive == true,
+            iptvActive = vodAppendJob !== currentJob && vodAppendJob?.isActive == true
+        )
     }
 
     private fun finishSupplementalSourceLookupIfReady(currentJob: Job?, errorMessage: PlayerMessage) {
@@ -8181,7 +8195,7 @@ class PlayerViewModel @Inject constructor(
         val stillActive = sourceLookupStillActive(currentJob)
         if (state.streams.isNotEmpty() || !state.selectedStreamUrl.isNullOrBlank()) {
             _uiState.value = state.copy(
-                isLoading = false,
+                isLoading = state.isLoading && streamSelectionJob?.isActive == true,
                 isLoadingStreams = false,
                 sourceSearchActive = stillActive,
                 streamProgress = null,
@@ -8237,6 +8251,7 @@ class PlayerViewModel @Inject constructor(
             )
         }
 
+        currentCoroutineContext().ensureActive()
         val validSources = sources.filter { !it.url.isNullOrBlank() }
         if (validSources.isEmpty()) {
             finishSupplementalSourceLookupIfReady(
@@ -8248,7 +8263,7 @@ class PlayerViewModel @Inject constructor(
         val latest = _uiState.value.streams
 
         val updated = (latest + validSources)
-            .distinctBy(::providerScopedStreamIdentity)
+            .distinctBy { providerScopedStreamIdentity(it) to playbackRequestIdentity(it) }
         val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
         val sortedStreams = sortStreamsByQualityAndSize(updated, preferredLanguage)
         val shouldAutoplayHomeServer = _uiState.value.selectedStreamUrl.isNullOrBlank()
@@ -8305,6 +8320,7 @@ class PlayerViewModel @Inject constructor(
             )
         }
 
+        currentCoroutineContext().ensureActive()
         val validVodSources = vodSources.filter { !it.url.isNullOrBlank() }
         if (validVodSources.isEmpty()) {
             finishSupplementalSourceLookupIfReady(
@@ -8316,7 +8332,7 @@ class PlayerViewModel @Inject constructor(
         val latest = _uiState.value.streams
 
         val updated = (latest + validVodSources)
-            .distinctBy(::providerScopedStreamIdentity)
+            .distinctBy { providerScopedStreamIdentity(it) to playbackRequestIdentity(it) }
         val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
         val sortedStreams = sortStreamsByQualityAndSize(updated, preferredLanguage)
         val shouldAutoplayVod = _uiState.value.selectedStreamUrl.isNullOrBlank()
@@ -8355,8 +8371,7 @@ class PlayerViewModel @Inject constructor(
 
             if (imdbId.isNullOrBlank()) {
                 _uiState.value = _uiState.value.copy(
-                    isLoadingStreams = false,
-                    sourceSearchActive = false
+                    isLoadingStreams = false
                 )
                 return
             }
@@ -8392,6 +8407,7 @@ class PlayerViewModel @Inject constructor(
                 )
             }
 
+            currentCoroutineContext().ensureActive()
             val allStreams = result.streams
                 .filter { stream ->
                     val u = stream.url?.trim().orEmpty()
@@ -8404,15 +8420,18 @@ class PlayerViewModel @Inject constructor(
                 if (playbackUrl.isNotBlank()) StreamSource(source = "Direct", addonName = "Direct", quality = "Direct", size = "", url = playbackUrl) else null
             )
             val mergedStreams = (allStreams + existingVod + activeStreamList)
-                .distinctBy(::providerScopedStreamIdentity)
+                .distinctBy { providerScopedStreamIdentity(it) to playbackRequestIdentity(it) }
 
             val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
             val sortedStreams = sortStreamsByQualityAndSize(mergedStreams, preferredLanguage)
-            val selectedMatch = findProvidedSelectedStreamMatch(sortedStreams, playbackUrl)
+            val playingUrl = _uiState.value.selectedStreamUrl ?: playbackUrl
+            val playingIndex = playingRequestIndex(sortedStreams, _uiState.value.selectedStream, playingUrl)
+            val selectedMatch = sortedStreams.getOrNull(playingIndex)
+                ?: findProvidedSelectedStreamMatch(sortedStreams, playingUrl)
 
             val shouldAutoplay = _uiState.value.selectedStreamUrl.isNullOrBlank()
             val prevSource = _uiState.value.selectedStream?.source.orEmpty()
-            val selectedForState = if (shouldAutoplay) {
+            val selectedForState = if (shouldAutoplay || streamSelectionJob?.isActive == true) {
                 _uiState.value.selectedStream
             } else {
                 selectedMatch ?: _uiState.value.selectedStream
@@ -8422,7 +8441,7 @@ class PlayerViewModel @Inject constructor(
                 streams = sortedStreams,
                 selectedStream = selectedForState,
                 isLoadingStreams = false,
-                sourceSearchActive = false,
+                sourceSearchActive = sourceLookupStillActive(),
                 streamProgress = null,
                 streamLoadPhase = null
             )
@@ -8437,11 +8456,18 @@ class PlayerViewModel @Inject constructor(
             if (prevSource.isBlank() && newSource.isNotBlank()) {
                 scheduleSubtitleSelection(currentOriginalLanguage)
             }
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             _uiState.value = _uiState.value.copy(
-                isLoadingStreams = false,
-                sourceSearchActive = false
+                isLoadingStreams = false
             )
+        } finally {
+            if (currentCoroutineContext().isActive) {
+                primaryStreamResolutionFinal = true
+                finishSupplementalSourceLookupIfReady(
+                    currentCoroutineContext()[Job], PlayerMessage.Res(R.string.player_error_no_streams_other_source)
+                )
+            }
         }
     }
 
