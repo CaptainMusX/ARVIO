@@ -27,11 +27,11 @@
     "description": "Server, Dienste, Live-TV, Trakt, Simkl und Wiedergabe in ARVIO bündeln – für Android TV, Android, iPhone, iPad, Windows und Mac.",
     "crumb": "Media-Hub",
     "eyebrow": "Kostenlose Android-App",
-    "h1": "Deine Mediendienste, sortiert für den Fernseher.",
+    "h1": "Deine Mediendienste, übersichtlich auf dem Fernseher.",
     "hero": "ARVIO ist ein kostenloser Open-Source-Media-Hub für Android TV, Google TV und Android. Das optionale ARVIO Web bringt unterstützte Funktionen auf iPhone, iPad, Windows, Mac, Chromebook, Apple TV und Smart-TV-Browser.",
     "sectionEyebrow": "Eine Oberfläche",
     "sectionTitle": "Verbinde, was du schon nutzt.",
-    "sectionCopy": "ARVIO ersetzt weder deinen Server noch deinen Anbieter. Es zeigt unterstützte Dienste in einer einheitlichen Mediathek – mit Profilen, Entdecken und einer Wiedergabe, die für die Fernbedienung gemacht ist.",
+    "sectionCopy": "ARVIO ersetzt weder deinen Server noch deinen Anbieter. Es zeigt unterstützte Dienste in einer einheitlichen Mediathek – mit Profilen, einem Entdecken-Bereich und einer Wiedergabe, die für die Fernbedienung gemacht ist.",
     "features": [
      [
       "Jellyfin, Plex und Emby",
@@ -39,7 +39,7 @@
      ],
      [
       "Trakt und Simkl",
-      "Nutze Listen, Fortschritt, Verlauf und Scrobbling und lege fest, welcher Tracker welche Funktion versorgt."
+      "Nutze Listen, Fortschritt, Verlauf und Scrobbling und lege fest, welcher Tracker welche Funktion übernimmt."
      ],
      [
       "Live-TV und Programmführer",
@@ -69,7 +69,7 @@
       "Lege Sprache, Darstellung und Wiedergabeverhalten für jede Person oder für die gemeinsame Nutzung fest."
      ],
      [
-      "Berechtigte Dienste verbinden",
+      "Eigene Dienste verbinden",
       "Füge nur Server, Konten, Playlists und Integrationen hinzu, auf die du zugreifen darfst."
      ]
     ],
@@ -178,7 +178,7 @@
     "crumb": "Plex, Emby und Jellyfin",
     "eyebrow": "Mediathek mit mehreren Servern",
     "h1": "Plex, Emby und Jellyfin in einer gemeinsamen Oberfläche.",
-    "hero": "Öffne berechtigte Heimserver in der kostenlosen App für Android TV und Smartphone oder nutze das optionale ARVIO Web auf iPhone, iPad, Windows, Mac, Apple TV und unterstützten Browsern.",
+    "hero": "Öffne deine Heimserver in der kostenlosen App für Android TV und Smartphone oder nutze das optionale ARVIO Web auf iPhone, iPad, Windows, Mac, Apple TV und unterstützten Browsern.",
     "sectionEyebrow": "Server wechseln, Oberfläche behalten",
     "sectionTitle": "Eine Bibliotheksseite, getrennte Quellen.",
     "sectionCopy": "Jeder Server bleibt eine eigenständige, maßgebliche Quelle. Du wechselst zwischen Mediatheken und behältst dabei dasselbe Kartendesign, dieselben Details und dieselbe Fernbedienungssteuerung.",
@@ -287,7 +287,7 @@
     "steps": [
      [
       "Integration einrichten",
-      "Nutze separat ein kompatibles Addon oder einen Dienst und ein Konto, das du verwenden darfst."
+      "Richte separat ein kompatibles Addon oder einen Dienst ein – mit einem Konto, das du nutzen darfst."
      ],
      [
       "Aufgelöste Quellen erhalten",
@@ -335,7 +335,7 @@
     "features": [
      [
       "Weiterschauen",
-      "Setze mit der nächsten Folge oder an der gespeicherten Position fort – über den Tracker, den du für den Fortschritt gewählt hast."
+      "Schau mit der nächsten Folge oder ab der gespeicherten Position weiter – über den Tracker, den du für den Fortschritt gewählt hast."
      ],
      [
       "Listen und Mediathek",
@@ -399,9 +399,9 @@
    },
    "live": {
     "title": "Live-TV und EPG auf Android TV, iPad, Windows, Mac - ARVIO",
-    "description": "Nutze deinen berechtigten Live-TV-Anbieter (IPTV) in ARVIO mit Anbieter-Reihenfolge, Favoriten, EPG, Suche und Catch-up.",
+    "description": "Nutze deinen eigenen Live-TV-Anbieter (IPTV) in ARVIO – mit Anbieter-Reihenfolge, Favoriten, EPG, Suche und Catch-up.",
     "crumb": "Live-TV und EPG",
-    "eyebrow": "Für deinen berechtigten Anbieter",
+    "eyebrow": "Für deinen eigenen Anbieter",
     "h1": "Ein Live-TV-Programmführer für alle deine Geräte.",
     "hero": "Durchsuche deinen Anbieter auf Android TV und Smartphone oder nutze das optionale ARVIO Web auf iPhone, iPad, Windows, Mac und unterstützten Browsern. Ob die Wiedergabe klappt, hängt von Anbieter und Gerät ab.",
     "sectionEyebrow": "Gebaut für große Playlists",
@@ -426,7 +426,7 @@
      ],
      [
       "Catch-up, sofern unterstützt",
-      "Sieh vergangene Sendungen ein und spiele Catch-up-Aufnahmen ab, wenn der Anbieter gültige URLs liefert."
+      "Sieh dir vergangene Sendungen an und spiele Catch-up-Aufnahmen ab, wenn der Anbieter gültige URLs liefert."
      ],
      [
       "Fernbedienung und Touch",
@@ -464,7 +464,7 @@
     ],
     "noteTitle": "Die Qualität hängt vom Anbieter ab",
     "note": "EPG, Archivdauer, Catch-up und Stream-Stabilität kommen vom verbundenen Dienst. ARVIO ordnet die empfangenen Daten und spielt sie ab.",
-    "ctaTitle": "Dein Anbieter, sortiert für die Fernbedienung.",
+    "ctaTitle": "Dein Anbieter, gemacht für die Fernbedienung.",
     "ctaCopy": "Nutze ARVIO kostenlos auf Android TV und Android.",
     "related": [
      "hub",
@@ -568,7 +568,7 @@
      ],
      [
       "Heimserver",
-      "Verbinde berechtigte Jellyfin-, Plex- und Emby-Server wie auf anderen kompatiblen Android-Geräten."
+      "Verbinde deine Jellyfin-, Plex- und Emby-Server wie auf anderen kompatiblen Android-Geräten."
      ],
      [
       "Tracking",
@@ -576,7 +576,7 @@
      ],
      [
       "Live-TV",
-      "Öffne deinen berechtigten Anbieter oder deine Playlist mit EPG und unterstützten Funktionen."
+      "Öffne deinen eigenen Anbieter oder deine Playlist mit EPG und unterstützten Funktionen."
      ],
      [
       "Grenzen der Plattform",
@@ -601,7 +601,7 @@
     "faq": [
      [
       "Gibt es ARVIO im Amazon Appstore?",
-      "Das kann variieren. Dokumentiert ist die Installation des offiziellen APK von GitHub auf kompatibler Hardware."
+      "Das ist nicht garantiert. Dokumentiert ist die Installation des offiziellen APK von GitHub auf kompatibler Hardware."
      ],
      [
       "Läuft dasselbe APK auf jedem Fire TV?",
@@ -630,10 +630,10 @@
     "crumb": "ARVIO Web",
     "eyebrow": "Optionaler Premium-Zugang im Browser",
     "h1": "Dein ARVIO-Setup auf iPhone, iPad, Windows und Mac.",
-    "hero": "ARVIO Web bringt Profile, Mediatheken, Tracking und berechtigte Dienste in moderne Browser auf Apple-Geräten, Windows, macOS, ChromeOS und kompatiblen Smart-TVs.",
+    "hero": "ARVIO Web bringt Profile, Mediatheken, Tracking und deine Dienste in moderne Browser auf Apple-Geräten, Windows, macOS, ChromeOS und kompatiblen Smart-TVs.",
     "sectionEyebrow": "Eine Ergänzung, kein Ersatz",
     "sectionTitle": "Deine Mediathek im Browser.",
-    "sectionCopy": "Die Android-App bleibt kostenlos und Open Source. ARVIO Web ist ein zusätzliches Abo für alle, die Browserzugang, Downloads und unterstützte Integrationen auf anderen Plattformen brauchen.",
+    "sectionCopy": "Die Android-App bleibt kostenlos und Open Source. ARVIO Web ist ein optionales Zusatzangebot für alle, die Browserzugang, Downloads und unterstützte Integrationen auf anderen Plattformen brauchen.",
     "features": [
      [
       "iPhone und iPad",
@@ -668,11 +668,11 @@
      ],
      [
       "Tarif wählen, wenn du auf Play drückst",
-      "Erkunden und einrichten ist kostenlos. Erst beim Drücken auf Play wählst du einen Tarif: 2,99 US-Dollar pro Monat oder 20 US-Dollar für 12 Monate."
+      "Umsehen und Einrichten kosten nichts. Erst wenn du auf Play drückst, wählst du einen Tarif: 2,99 US-Dollar pro Monat oder 20 US-Dollar für 12 Monate."
      ],
      [
       "Deine Dienste öffnen",
-      "Durchsuche deine synchronisierten Profile, Mediatheken und berechtigten Integrationen."
+      "Durchsuche deine synchronisierten Profile, Mediatheken und verbundenen Integrationen."
      ]
     ],
     "faq": [
@@ -717,7 +717,7 @@
   "servers": [
    "Heimserver",
    "Plex, Emby und Jellyfin zusammen",
-   "Mehrere berechtigte Server in einer Mediathek bündeln."
+   "Mehrere eigene Server in einer Oberfläche nutzen."
   ],
   "sources": [
    "Quellen und Wiedergabe",
@@ -732,7 +732,7 @@
   "live": [
    "Live-TV",
    "Live-TV und EPG",
-   "Dein berechtigter Anbieter mit Programmführer, Favoriten und Catch-up, sofern unterstützt."
+   "Dein eigener Anbieter mit Programmführer, Favoriten und Catch-up, sofern unterstützt."
   ],
   "subtitles": [
    "Barrierefreiheit",
@@ -754,7 +754,7 @@
   "title": "ARVIO auf Deutsch - kostenloser Media-Hub für Android TV",
   "description": "ARVIO auf Deutsch: ein kostenloser Open-Source-Media-Hub für Android TV, Heimserver, Live-TV, Trakt, Simkl und Untertitel.",
   "eyebrow": "ARVIO auf Deutsch",
-  "h1": "Alles, was du schaust. Eine aufgeräumte Oberfläche.",
+  "h1": "Alles, was du schaust – in einer aufgeräumten Oberfläche.",
   "lead": "ARVIO bündelt Server, Dienste und Wiedergabe-Werkzeuge, die du bereits nutzt, in einer schnellen Oberfläche für Android TV, Google TV und Android. Das optionale ARVIO Web erweitert den Zugang auf iPhone, iPad, Windows, Mac und andere unterstützte Browser.",
   "sectionTitle": "Die wichtigsten Funktionen im Überblick.",
   "sectionCopy": "Starte mit dem Überblick oder öffne direkt die Anleitung für deinen Server, Tracker, Anbieter oder dein Gerät.",

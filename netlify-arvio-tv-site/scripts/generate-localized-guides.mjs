@@ -823,6 +823,7 @@ const localeKeys = ["pt", "es", ...extraLocaleKeys];
 const premiumRoutesFile = path.join(siteRoot, "premium/localized-routes.json");
 const premiumRoutes = fs.existsSync(premiumRoutesFile) ? JSON.parse(fs.readFileSync(premiumRoutesFile, "utf8")) : [];
 
+const privacyLabels = { pt: "Privacidade", es: "Privacidad", de: "Datenschutz", fr: "Confidentialité", nl: "Privacy", it: "Privacy", sv: "Integritet", da: "Privatliv", nb: "Personvern", fi: "Tietosuoja", hi: "गोपनीयता" };
 const languageNames = { pt: "Português (Brasil)", es: "Español", de: "Deutsch", fr: "Français", nl: "Nederlands", it: "Italiano", sv: "Svenska", da: "Dansk", nb: "Norsk", fi: "Suomi", hi: "हिन्दी" };
 
 function absolute(urlPath) {
@@ -851,7 +852,7 @@ function header(localeKey, current = "", pageKey = current || "home") {
 
 function footer(localeKey, extra = "") {
   const locale = locales[localeKey];
-  return `<footer class="site-footer"><div class="shell"><div class="footer-main"><div class="footer-brand"><img src="/assets/arvio-wordmark.png" alt="ARVIO"><p>${locale.footerDescription}</p></div><nav class="footer-links" aria-label="${locale.footerNav}"><a href="${pageMap.home[localeKey]}">${locale.home}</a><a href="${pageMap.guides[localeKey]}">${locale.guides}</a><a href="/privacy">Privacy</a><a href="${githubUrl}">GitHub</a></nav></div><nav class="footer-languages" aria-label="${locale.languageLabel}"><a href="/" hreflang="en" lang="en">English</a>${localeKeys.map((key) => `<a href="${pageMap.home[key]}" hreflang="${locales[key].hreflang}" lang="${locales[key].htmlLang}">${languageNames[key]}</a>`).join("")}</nav><div class="footer-bottom"><span>© 2026 ARVIO</span><span>${extra || locale.footerBoundary}</span></div></div></footer>`;
+  return `<footer class="site-footer"><div class="shell"><div class="footer-main"><div class="footer-brand"><img src="/assets/arvio-wordmark.png" alt="ARVIO"><p>${locale.footerDescription}</p></div><nav class="footer-links" aria-label="${locale.footerNav}"><a href="${pageMap.home[localeKey]}">${locale.home}</a><a href="${pageMap.guides[localeKey]}">${locale.guides}</a><a href="/privacy">${privacyLabels[localeKey] ?? "Privacy"}</a><a href="${githubUrl}">GitHub</a></nav></div><nav class="footer-languages" aria-label="${locale.languageLabel}"><a href="/" hreflang="en" lang="en">English</a>${localeKeys.map((key) => `<a href="${pageMap.home[key]}" hreflang="${locales[key].hreflang}" lang="${locales[key].htmlLang}">${languageNames[key]}</a>`).join("")}</nav><div class="footer-bottom"><span>© 2026 ARVIO</span><span>${extra || locale.footerBoundary}</span></div></div></footer>`;
 }
 
 function structuredData(localeKey, key, page) {

@@ -87,7 +87,7 @@
       "Il prend en charge les serveurs Jellyfin, Plex et Emby, la TV en direct, Trakt, Simkl, les sous-titres et les intégrations personnelles compatibles."
      ]
     ],
-    "noteTitle": "Limite de contenu",
+    "noteTitle": "Ce qu'ARVIO fournit",
     "note": "ARVIO fournit l'interface et le lecteur. La disponibilité et la qualité dépendent de la source connectée, du réseau et des capacités de l'appareil.",
     "ctaTitle": "Un centre ouvert pour votre configuration.",
     "ctaCopy": "Installez-le gratuitement sur Android ou consultez l'intégralité du projet sur GitHub.",
@@ -130,7 +130,7 @@
      ],
      [
       "Lecture adaptée à l'appareil",
-      "ARVIO tente une lecture compatible et Jellyfin peut transcoder les formats que l'appareil ne lit pas directement."
+      "ARVIO choisit un mode de lecture compatible, et Jellyfin peut transcoder les formats que l'appareil ne lit pas directement."
      ]
     ],
     "stepsTitle": "Trois étapes pour ouvrir votre bibliothèque.",
@@ -276,7 +276,7 @@
      ],
      [
       "Tri utile",
-      "Respectez l'ordre des addons et comparez taille et qualité pour trouver rapidement vos options préférées."
+      "ARVIO conserve l'ordre des addons et vous permet de comparer taille et qualité pour trouver rapidement vos options préférées."
      ],
      [
       "Android et navigateur",
@@ -287,15 +287,15 @@
     "steps": [
      [
       "Configurez une intégration",
-      "Utilisez, séparément, un addon ou service compatible et un compte que vous êtes autorisé à utiliser."
+      "Utilisez un addon ou service compatible, configuré séparément, avec un compte que vous êtes autorisé à utiliser."
      ],
      [
       "Recevez les sources résolues",
       "L'intégration renvoie des métadonnées et une URL HTTP lisible. ARVIO n'effectue aucune recherche dans les infrastructures Usenet ou debrid."
      ],
      [
-      "Choisissez ou lancez l'autoplay",
-      "Sélectionnez un résultat précis ou laissez l'autoplay prendre le meilleur candidat disponible selon vos préférences."
+      "Choisissez une source ou passez en lecture automatique",
+      "Sélectionnez un résultat précis ou laissez la lecture automatique choisir la meilleure option disponible selon vos préférences."
      ]
     ],
     "faq": [
@@ -355,7 +355,7 @@
      ],
      [
       "Synchronisation entre appareils",
-      "Les choix compatibles peuvent suivre le compte ARVIO sur Android et dans le navigateur, en option."
+      "Les réglages compatibles suivent votre compte ARVIO, sur Android comme dans ARVIO Web (en option)."
      ]
     ],
     "stepsTitle": "Connectez, choisissez, suivez.",
@@ -587,7 +587,7 @@
     "steps": [
      [
       "Téléchargez depuis GitHub",
-      "Récupérez l'APK de la release sur la page officielle du projet."
+      "Récupérez l'APK de la dernière version sur la page officielle du projet."
      ],
      [
       "Autorisez l'installation",
@@ -672,12 +672,12 @@
      ],
      [
       "Ouvrez vos services",
-      "Parcourez vos profils, bibliothèques et intégrations autorisées synchronisés."
+      "Retrouvez vos profils, bibliothèques et intégrations autorisées, synchronisés."
      ]
     ],
     "faq": [
      [
-      "L'application Android cesse-t-elle d'être gratuite ?",
+      "L'application Android va-t-elle devenir payante ?",
       "Non. L'application Android reste gratuite et open source."
      ],
      [
@@ -754,7 +754,7 @@
   "title": "ARVIO en français - Centre multimédia gratuit pour Android TV",
   "description": "Découvrez ARVIO en français : un centre multimédia gratuit et open source pour Android TV, serveurs domestiques, TV en direct, Trakt, Simkl et sous-titres.",
   "eyebrow": "ARVIO en français",
-  "h1": "Tout ce que vous regardez. Une interface organisée.",
+  "h1": "Vos médias, élégamment réunis.",
   "lead": "ARVIO réunit les serveurs, services et outils de lecture que vous utilisez déjà dans une expérience rapide pour Android TV, Google TV et Android. ARVIO Web, en option, étend l'accès à l'iPhone, l'iPad, Windows, Mac et d'autres navigateurs compatibles.",
   "sectionTitle": "Découvrez les principales fonctions.",
   "sectionCopy": "Commencez par la présentation générale ou ouvrez un guide dédié à votre serveur, service de suivi, fournisseur ou appareil.",
@@ -807,7 +807,7 @@
    "Créez une rangée d'accueil avec jusqu'à huit dossiers, copiez le JSON dans ARVIO et partagez un aperçu public."
   ],
   "/self-host-arvio-web/": [
-   "Navigateur gratuit · En anglais",
+   "Version web gratuite · En anglais",
    "Auto-hébergement avec Docker ou Node.js",
    "Commandes d'installation, vos clés API, profils locaux, accès réseau et mises à jour."
   ],
