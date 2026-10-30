@@ -192,6 +192,7 @@ import com.arflix.tv.ui.screens.player.common.NextEpisodePromptGate
 import com.arflix.tv.ui.screens.player.common.PlaybackEpisodeKey
 import com.arflix.tv.ui.skin.LocalAccentColorOverride
 import com.arflix.tv.ui.theme.ArflixTypography
+import com.arflix.tv.ui.theme.BackgroundElevated
 import com.arflix.tv.ui.theme.Pink
 import com.arflix.tv.ui.theme.PurpleDark
 import com.arflix.tv.ui.theme.PurpleLight
@@ -5340,7 +5341,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     Column(
                         modifier = Modifier
                             .width(480.dp)
-                            .background(Color(0xFF1A1A1A), RoundedCornerShape(16.dp))
+                            .background(BackgroundElevated, RoundedCornerShape(16.dp))
                             .border(1.dp, accentColor.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
                             .padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
@@ -6410,7 +6411,7 @@ private fun SubtitleMenu(
                     .fillMaxHeight(0.70f)
                     .align(Alignment.BottomCenter)
                     .background(
-                        Color(0xFF1A1A1A),
+                        BackgroundElevated,
                         RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
                     )
                     .clickable(

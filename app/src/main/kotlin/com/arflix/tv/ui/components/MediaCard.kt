@@ -824,7 +824,7 @@ fun FeaturedMediaCard(
     ArvioFocusableSurface(
         modifier = Modifier.size(width, height).testTag("home_trailer_card_${item.mediaType}_${item.id}"),
         shape = shape,
-        backgroundColor = Color(0xFF1A1A1A),
+        backgroundColor = BackgroundElevated,
         outlineColor = ArvioSkin.colors.focusOutline,
         outlineWidth = 2.5.dp,
         focusedScale = 1f,

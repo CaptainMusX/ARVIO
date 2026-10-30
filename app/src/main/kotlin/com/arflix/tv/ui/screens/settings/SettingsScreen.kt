@@ -9438,7 +9438,7 @@ private fun CatalogDiscoveryTextInputDialog(
                     .widthIn(max = 680.dp)
                     .fillMaxWidth(if (isCompact) 0.92f else 0.76f)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF181818), RoundedCornerShape(16.dp))
+                    .background(BackgroundElevated, RoundedCornerShape(16.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(16.dp))
                     .padding(if (isCompact) 16.dp else 20.dp)
             ) {
