@@ -4183,37 +4183,42 @@ class TraktRepository @Inject constructor(
     }
 
     suspend fun addToWatchlist(mediaType: MediaType, tmdbId: Int): Boolean {
-        val auth = getAuthHeader() ?: return false
         return try {
             val body = if (mediaType == MediaType.MOVIE) {
                 TraktWatchlistBody(movies = listOf(TraktMovieId(TraktIds(tmdb = tmdbId))))
             } else {
                 TraktWatchlistBody(shows = listOf(TraktShowId(TraktIds(tmdb = tmdbId))))
             }
-            traktApi.addToWatchlist(auth, clientId, "2", body)
+            traktSession.authorized { auth -> traktApi.addToWatchlist(auth, clientId, "2", body) }
             true
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-
+            AppLogger.w("TraktRepository", "Watchlist add failed: ${watchlistFailureKind(e)}")
             false
         }
     }
 
     suspend fun removeFromWatchlist(mediaType: MediaType, tmdbId: Int): Boolean {
-        val auth = getAuthHeader() ?: return false
         return try {
             val body = if (mediaType == MediaType.MOVIE) {
                 TraktWatchlistBody(movies = listOf(TraktMovieId(TraktIds(tmdb = tmdbId))))
             } else {
                 TraktWatchlistBody(shows = listOf(TraktShowId(TraktIds(tmdb = tmdbId))))
             }
-            traktApi.removeFromWatchlist(auth, clientId, "2", body)
+            traktSession.authorized { auth -> traktApi.removeFromWatchlist(auth, clientId, "2", body) }
             true
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
-
+            AppLogger.w("TraktRepository", "Watchlist remove failed: ${watchlistFailureKind(e)}")
             false
         }
+    }
+
+    // Diagnostic categories only: never log tokens, request URLs or response bodies.
+    private fun watchlistFailureKind(error: Exception): String = when (error) {
+        is HttpException -> "http_${error.code()}"
+        is TraktAuthUnavailable -> if (error.reconnectRequired) "reconnect_required" else "auth_unavailable"
+        else -> error.javaClass.simpleName
     }
 
     suspend fun checkInWatchlist(mediaType: MediaType, tmdbId: Int): Boolean {

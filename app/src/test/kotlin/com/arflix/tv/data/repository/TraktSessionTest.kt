@@ -34,6 +34,46 @@ import javax.inject.Provider
 @Config(sdk = [28], application = Application::class)
 @ConscryptMode(ConscryptMode.Mode.OFF)
 class TraktSessionTest {
+    @Test fun watchlistAddRefreshesRejectedTokenAndRetriesSameMovie() = runBlocking {
+        session.save(token(expires = 86_400), "a")
+        coEvery { api.addToWatchlist("Bearer old", any(), any(), any()) } throws http(401)
+        coEvery { api.refreshToken(any()) } returns token("new", "rotated", 86_400)
+        coEvery { api.addToWatchlist("Bearer new", any(), any(), any()) } returns
+            com.arflix.tv.data.api.TraktSyncResponse(com.arflix.tv.data.api.TraktSyncCounts(movies = 1), null, null, null)
+        assertTrue(repository().addToWatchlist(com.arflix.tv.data.model.MediaType.MOVIE, 603))
+        coVerify(exactly = 1) { api.refreshToken(any()) }
+        coVerify(exactly = 1) { api.addToWatchlist("Bearer new", any(), any(), match { it.movies?.single()?.ids?.tmdb == 603 && it.shows == null }) }
+    }
+
+    @Test fun watchlistRemovalRefreshesRejectedTokenAndRetriesSameShow() = runBlocking {
+        session.save(token(expires = 86_400), "a")
+        coEvery { api.removeFromWatchlist("Bearer old", any(), any(), any()) } throws http(401)
+        coEvery { api.refreshToken(any()) } returns token("new", "rotated", 86_400)
+        coEvery { api.removeFromWatchlist("Bearer new", any(), any(), any()) } returns
+            com.arflix.tv.data.api.TraktSyncResponse(null, com.arflix.tv.data.api.TraktSyncCounts(shows = 1), null, null)
+        assertTrue(repository().removeFromWatchlist(com.arflix.tv.data.model.MediaType.TV, 1399))
+        coVerify(exactly = 1) { api.refreshToken(any()) }
+        coVerify(exactly = 1) { api.removeFromWatchlist("Bearer new", any(), any(), match { it.shows?.single()?.ids?.tmdb == 1399 && it.movies == null }) }
+    }
+
+    @Test fun watchlistRateLimitDoesNotRotateCredentialsOrReportSuccess() = runBlocking {
+        session.save(token(expires = 86_400), "a")
+        coEvery { api.addToWatchlist(any(), any(), any(), any()) } throws http(429)
+        assertFalse(repository().addToWatchlist(com.arflix.tv.data.model.MediaType.MOVIE, 603))
+        coVerify(exactly = 0) { api.refreshToken(any()) }
+        coVerify(exactly = 1) { api.addToWatchlist(any(), any(), any(), any()) }
+        assertTrue(session.connection.first().connected)
+    }
+
+    @Test fun watchlistRepeatedUnauthorizedStopsAfterOneRetryAndRequiresReconnect() = runBlocking {
+        session.save(token(expires = 86_400), "a")
+        coEvery { api.addToWatchlist(any(), any(), any(), any()) } throws http(401)
+        coEvery { api.refreshToken(any()) } returns token("new", "rotated", 86_400)
+        assertFalse(repository().addToWatchlist(com.arflix.tv.data.model.MediaType.TV, 1399))
+        coVerify(exactly = 1) { api.refreshToken(any()) }
+        coVerify(exactly = 2) { api.addToWatchlist(any(), any(), any(), any()) }
+        assertTrue(session.connection.first().reconnectRequired)
+    }
     private class MemoryStore : DataStore<Preferences> {
         override val data = MutableStateFlow<Preferences>(emptyPreferences())
         private val lock = Mutex()
