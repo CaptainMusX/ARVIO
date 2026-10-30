@@ -14,7 +14,7 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun landscapePhoneUsesCompactBottomBar() {
+    fun landscapePhoneUsesFloatingDock() {
         val mode = appBottomBarMode(
             isTouchDevice = true,
             smallestScreenWidthDp = 411,
@@ -22,16 +22,90 @@ class AppBottomBarResponsiveLayoutTest {
             screenHeightDp = 360,
         )
 
-        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_COMPACT)
+        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
     }
 
     @Test
-    fun compactBottomBarKeepsTouchTargetsButUsesLessHeight() {
-        val spec = appBottomBarSpec(AppBottomBarMode.LANDSCAPE_COMPACT)
+    fun floatingDockKeepsTheStandardTouchTargetAndIconSize() {
+        val spec = appBottomBarSpec(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
 
-        assertThat(spec.itemHeightDp).isEqualTo(48)
-        assertThat(spec.iconSizeDp).isEqualTo(20)
-        assertThat(spec.labelFontSizeSp).isEqualTo(10)
+        assertThat(spec.itemHeightDp).isEqualTo(52)
+        assertThat(spec.iconSizeDp).isEqualTo(32)
+        assertThat(spec.labelFontSizeSp).isEqualTo(11)
+    }
+
+    @Test
+    fun floatingDockTracksTheReferenceScreenWidthRatio() {
+        for (screenWidthDp in listOf(892, 1280, 1920, 2560)) {
+            val ratio = landscapeDockWidthDp(screenWidthDp).toDouble() / screenWidthDp
+            assertThat(ratio).isWithin(0.001).of(0.34)
+        }
+    }
+
+    @Test
+    fun floatingDockKeepsSmallScreenTabsTappableWithoutLosingEdgeGaps() {
+        assertThat(landscapeDockWidthDp(600)).isEqualTo(280)
+        assertThat(landscapeDockWidthDp(360)).isEqualTo(280)
+        assertThat(landscapeDockWidthDp(300)).isEqualTo(268)
+    }
+
+    @Test
+    fun floatingPhoneDockReservesItsHeightGapAndSystemNavigationBeforeMeasurement() {
+        val clearance = appBottomBarClearance(
+            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 360, 0f, 24f
+        )
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(104f, 104f))
+    }
+
+    @Test
+    fun floatingTabletDockUsesItsResponsiveHeight() {
+        val clearance = appBottomBarClearance(
+            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 800, 88f, 24f
+        )
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(128f, 128f))
+    }
+
+    @Test
+    fun floatingDockReservesTheMeasuredHeightWhenLargerThanTheFallback() {
+        val clearance = appBottomBarClearance(
+            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 360, 80f, 0f
+        )
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(96f, 96f))
+    }
+
+    @Test
+    fun finalScrollableRowClearsPersistentDockForPhonesAndTablets() {
+        for (height in listOf(320, 360, 800, 1200)) {
+            for (navigation in listOf(0f, 24f, 48f)) {
+                val dockHeight = landscapeDockHeightDp(height).toFloat()
+                val clearance = appBottomBarClearance(
+                    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, height, dockHeight, navigation
+                )
+                val dockTop = height - navigation - LANDSCAPE_DOCK_BOTTOM_GAP_DP - dockHeight
+                val finalRowBottom = height - 16f - clearance.scrollInsetDp
+                assertThat(finalRowBottom).isAtMost(dockTop - 16f)
+            }
+        }
+    }
+
+    @Test
+    fun standardBarDoesNotDoubleCountMeasuredSystemNavigation() {
+        val clearance = appBottomBarClearance(AppBottomBarMode.STANDARD, true, 892, 76f, 24f)
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(24f, 76f))
+    }
+
+    @Test
+    fun standardBarKeepsItsExistingFallbackAndScrollInset() {
+        val clearance = appBottomBarClearance(AppBottomBarMode.STANDARD, true, 892, 0f, 48f)
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(48f, 100f))
+    }
+
+    @Test
+    fun hiddenBarsLeaveNoNavigationClearanceInEitherMode() {
+        for (mode in AppBottomBarMode.values()) {
+            assertThat(appBottomBarClearance(mode, false, 800, 88f, 24f))
+                .isEqualTo(AppBottomBarClearance(0f, 0f))
+        }
     }
 
     @Test
@@ -47,7 +121,7 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun landscapeTabletKeepsStandardBottomBar() {
+    fun landscapeTabletUsesFloatingDock() {
         val mode = appBottomBarMode(
             isTouchDevice = true,
             smallestScreenWidthDp = 700,
@@ -55,7 +129,7 @@ class AppBottomBarResponsiveLayoutTest {
             screenHeightDp = 800,
         )
 
-        assertThat(mode).isEqualTo(AppBottomBarMode.STANDARD)
+        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
     }
 
     @Test
