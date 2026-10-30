@@ -1832,6 +1832,17 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         )
     }
 
+    val latestSeekBrowsing by rememberUpdatedState(seekInteraction.browsing)
+    LaunchedEffect(hasPlaybackStarted, isPlaying, isBuffering, previewStatus.sourceGeneration, isCasting) {
+        if (!hasPlaybackStarted || !isPlaying || isBuffering || args.isLiveStream || isCasting) return@LaunchedEffect
+        delay(3_000)
+        if (exoPlayer.isPlaying && !latestSeekBrowsing &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            // Bind and load native code only: no remote reads or speculative decoding.
+            seekPreviewProvider.prepareWorker()
+        }
+    }
+
     val controlsPreviewPosition = if (isControlScrubbing || seekInteraction.phase == SeekPhase.Exiting) scrubPreviewPosition else currentPosition
     val previewTarget = if (seekInteraction.phase != SeekPhase.Idle) seekInteraction.targetMs else currentPosition
     val previewRequested = !isCasting && !args.isLiveStream && hasPlaybackStarted && duration > 0L &&
@@ -1904,7 +1915,6 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     }
 
     // Monitor continuously: a previously healthy buffer is not permission to keep downloading.
-    val latestSeekBrowsing by rememberUpdatedState(seekInteraction.browsing)
     // Low-memory TVs and heavy remuxes also accumulate rewind previews, without a second
     // video connection or decoder. Only cache a copy tied to a renderer timestamp.
     LaunchedEffect(hasPlaybackStarted, isPlaying, isBuffering, seekInteraction.phase,

@@ -430,6 +430,16 @@ class SeekPreviewFrameProvider internal constructor(
     suspend fun frameAt(positionMs: Long, cacheOnly: Boolean = false, playbackPaused: Boolean = false): SeekPreviewFrame? =
         requestFrame(positionMs, cacheOnly, background = false, playbackPaused = playbackPaused)
 
+    suspend fun prepareWorker(): Boolean {
+        val source = active ?: return false
+        if (closed || source.unavailable || source.memoryDisabled || source.decoderDisabled ||
+            source.images != null || !source.source.allowExtraction || source.source.isAdaptive ||
+            !source.source.useNativeKeyframes) return false
+        return try { keyframeWorker.prepare() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { false }
+    }
+
     /** Only call when playback is stable. Foreground work preempts warming, never the reverse. */
     suspend fun warmAround(positionMs: Long, direction: Int = 1) {
         val source = active ?: return
