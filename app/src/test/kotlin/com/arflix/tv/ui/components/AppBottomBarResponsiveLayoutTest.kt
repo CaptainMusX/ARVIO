@@ -35,9 +35,18 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun floatingDockIsWideOnTabletsButKeepsAnEdgeGapOnSmallerScreens() {
-        assertThat(landscapeDockWidthDp(1280)).isEqualTo(420)
-        assertThat(landscapeDockWidthDp(360)).isEqualTo(328)
+    fun floatingDockTracksTheReferenceScreenWidthRatio() {
+        for (screenWidthDp in listOf(892, 1280, 1920, 2560)) {
+            val ratio = landscapeDockWidthDp(screenWidthDp).toDouble() / screenWidthDp
+            assertThat(ratio).isWithin(0.001).of(0.34)
+        }
+    }
+
+    @Test
+    fun floatingDockKeepsSmallScreenTabsTappableWithoutLosingEdgeGaps() {
+        assertThat(landscapeDockWidthDp(600)).isEqualTo(280)
+        assertThat(landscapeDockWidthDp(360)).isEqualTo(280)
+        assertThat(landscapeDockWidthDp(300)).isEqualTo(268)
     }
 
     @Test

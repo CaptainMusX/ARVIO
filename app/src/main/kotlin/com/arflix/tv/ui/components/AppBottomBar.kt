@@ -70,6 +70,7 @@ import com.arflix.tv.util.LocalDeviceType
 import com.arflix.tv.R
 import com.arflix.tv.navigation.Screen
 import androidx.compose.material3.Icon
+import kotlin.math.roundToInt
 
 internal enum class AppBottomBarMode {
     STANDARD,
@@ -127,9 +128,17 @@ internal fun appBottomBarSpec(mode: AppBottomBarMode): AppBottomBarSpec = when (
     )
 }
 
-/** A roomy tablet dock that still leaves a consistent edge gap on smaller screens. */
-internal fun landscapeDockWidthDp(screenWidthDp: Int): Int =
-    (screenWidthDp - 32).coerceIn(280, 420)
+/** Match the reference's roughly one-third screen width, keeping small-screen tabs tappable. */
+internal fun landscapeDockWidthDp(screenWidthDp: Int): Int {
+    val availableWidthDp = (screenWidthDp - 32).coerceAtLeast(0)
+    return (screenWidthDp * 0.34f).roundToInt()
+        .coerceAtLeast(280)
+        .coerceAtMost(availableWidthDp)
+}
+
+/** Keep the dock close to the reference's screen-height proportion while preserving tap space. */
+internal fun landscapeDockHeightDp(screenHeightDp: Int): Int =
+    (screenHeightDp * 0.11f).roundToInt().coerceIn(64, 112)
 
 internal fun mobileContentInsets(systemBars: WindowInsets, showBottomBar: Boolean = false): WindowInsets =
     systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
@@ -199,7 +208,9 @@ fun AppBottomBar(
     val isFloatingDock = mode == AppBottomBarMode.LANDSCAPE_FLOATING_DOCK
     val accent = resolveAccentColor(fallback = Color.White)
     val barHeight = (spec.itemHeightDp ?: 52).dp
-    val dockWidth = landscapeDockWidthDp(LocalConfiguration.current.screenWidthDp).dp
+    val configuration = LocalConfiguration.current
+    val dockWidth = landscapeDockWidthDp(configuration.screenWidthDp).dp
+    val dockHeight = landscapeDockHeightDp(configuration.screenHeightDp).dp
     val surfaceShape = if (isFloatingDock) RoundedCornerShape(18.dp) else RectangleShape
 
     val baseModifier = if (hazeState != null) {
@@ -246,7 +257,8 @@ fun AppBottomBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = spec.rowVerticalPaddingDp.dp),
+                    .height(dockHeight)
+                    .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -257,7 +269,7 @@ fun AppBottomBar(
                         onNavigate,
                         spec,
                         accent,
-                        Modifier.weight(1f).height(barHeight)
+                        Modifier.weight(1f).fillMaxHeight()
                     )
                 }
             }
