@@ -194,7 +194,8 @@ class ProvidedSourceLookupTest {
         assertEquals(placeholder.url, model.uiState.value.selectedStreamUrl)
         assertTrue(model.uiState.value.isLoading)
         resolved.complete(manual)
-        withTimeout(5_000) { model.uiState.first { it.selectedStreamUrl == manual.url } }
+        val finished = withTimeout(5_000) { model.uiState.first { it.selectedStreamUrl == manual.url } }
+        assertFalse(finished.isLoading)
     }
 
     @Test fun cancelledSupplementalLookupCannotAppendToTheNextMediaItem() = runBlocking {
