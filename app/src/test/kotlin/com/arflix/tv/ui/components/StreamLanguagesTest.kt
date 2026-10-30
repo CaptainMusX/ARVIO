@@ -36,7 +36,10 @@ class StreamLanguagesTest {
     @Test
     fun `single language and multi audio`() {
         assertEquals("🇩🇪 DE", streamLanguageBadge(listOf("de"), false, "de"))
-        assertEquals("🌐 DE", streamLanguageBadge(listOf("de"), true, "de"))
+        assertEquals("🇩🇪 DE 🌐", streamLanguageBadge(listOf("de"), true, "de"))
+        assertEquals("🇫🇷 FR 🌐", streamLanguageBadge(listOf("fr"), true, "de"))
+        assertEquals("TE 🌐", streamLanguageBadge(listOf("te"), true, null))
+        assertEquals("🇫🇷 FR +1", streamLanguageBadge(listOf("fr", "en"), true, "de"))
         assertNull(streamLanguageBadge(emptyList(), true, "de"))
     }
 

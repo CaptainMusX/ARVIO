@@ -83,7 +83,8 @@ private fun isRegionalIndicator(codePoint: Int): Boolean = codePoint in 0x1F1E6.
 /**
  * The language badge for a source: the viewer's language first when the release has it, then how
  * many other languages it carries ("🇩🇪 DE +2"). A multi-audio release that names only one language
- * shows the globe ("🌐 DE"). Null when no language is named.
+ * ("MULTi FRENCH") adds the globe for "more, count unknown" ("🇫🇷 FR 🌐"): only named languages are
+ * counted. Null when no language is named.
  */
 internal fun streamLanguageBadge(
     languages: List<String>,
@@ -98,7 +99,7 @@ internal fun streamLanguageBadge(
     val code = primary.uppercase()
     return when {
         others > 0 -> "${languageFlag(primary)}$code +$others"
-        isMultiAudio -> "🌐 $code"
+        isMultiAudio -> "${languageFlag(primary)}$code 🌐"
         else -> "${languageFlag(primary)}$code"
     }
 }

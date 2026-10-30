@@ -5,6 +5,7 @@ import com.arflix.tv.data.model.StreamSource
 import com.arflix.tv.data.model.Subtitle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class StreamPresentationLanguageTest {
@@ -48,6 +49,34 @@ class StreamPresentationLanguageTest {
         val result = presentation(source().copy(source = "The.Italian.Job.2003.1080p.mkv"), "it", "The Italian Job")
         assertNull(field(result, "languageBadge"))
         assertNull(field(result, "languageLabel"))
+    }
+
+    @Test fun oneNamedMultiAudioLanguageKeepsItsFlagButNotEmojiInTheChip() {
+        val result = presentation(source(description = "MULTi FRENCH"), "de")
+        assertEquals("\uD83C\uDDEB\uD83C\uDDF7 FR \uD83C\uDF10", field(result, "languageBadge"))
+        assertEquals("FR", field(result, "languageLabel"))
+        assertEquals(true, (field(result, "chips") as List<*>).contains("FR"))
+    }
+
+    @Test fun aLanguageWithoutAFlagStillGetsACleanMultiAudioChip() {
+        val result = presentation(source(description = "MULTi Telugu"), "en")
+        assertEquals("TE \uD83C\uDF10", field(result, "languageBadge"))
+        assertEquals("TE", field(result, "languageLabel"))
+    }
+
+    @Test fun explicitlyNamedExtraLanguagesKeepTheirActualCount() {
+        val result = presentation(source(description = "MULTi FRENCH ENGLISH"), "fr")
+        assertEquals("\uD83C\uDDEB\uD83C\uDDF7 FR +1", field(result, "languageBadge"))
+        assertEquals("FR +1", field(result, "languageLabel"))
+    }
+
+    @Test fun emojiFormattingChangesDisplayTextButNotThePlaybackSource() {
+        val stream = source(description = "[PM\u26A1] \u23F3").copy(url = "https://example.invalid/video.mkv")
+        val result = presentation(stream, "en")
+        assertEquals("[PM\u26A1\uFE0F] \u23F3\uFE0F", field(result, "description"))
+        assertSame(stream, field(result, "stream"))
+        assertEquals("[PM\u26A1] \u23F3", stream.description)
+        assertEquals("https://example.invalid/video.mkv", stream.url)
     }
 
     private fun source(description: String? = null, hints: StreamBehaviorHints? = null) = StreamSource(
