@@ -4047,19 +4047,7 @@ class StreamRepository @Inject constructor(
         }
     }
 
-    private fun resolvedStreamCacheKey(stream: StreamSource): String {
-        val infoHash = stream.infoHash?.trim()?.lowercase(Locale.US).orEmpty()
-        if (infoHash.isNotBlank()) {
-            return "ih:${stream.addonId}|$infoHash:${stream.fileIdx ?: -1}"
-        }
-        val url = stream.url?.trim().orEmpty()
-        val urlKey = if (url.isNotBlank()) {
-            url.substringBefore('|').substringBefore('#')
-        } else {
-            stream.source
-        }
-        return "${stream.addonId}|${stream.source}|$urlKey"
-    }
+    private fun resolvedStreamCacheKey(stream: StreamSource): String = resolvedPlaybackRequestCacheKey(stream)
 
     private fun isLikelyEphemeralPlaybackUrl(url: String, stream: StreamSource): Boolean {
         val lower = url.lowercase(Locale.US)
