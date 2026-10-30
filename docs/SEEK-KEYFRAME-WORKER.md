@@ -444,3 +444,67 @@ playback stopped. Evidence: `artifacts/tv-priority-timing.log`,
 `artifacts/tv-priority-final-steady-*.txt`,
 `artifacts/tv-priority-cached-bright.png` and
 `artifacts/preview-priority-release-verification.json`.
+
+### Worker pre-start and repeated-jump preparation (30 October 2026)
+
+After three seconds of playing without a buffering transition, the foreground
+player can bind the preview service and load its native library. This preparation
+does not receive a media URL, open a decoder/demuxer or request video bytes. The
+service checks available memory and uses its low-priority worker. The client
+coalesces preparation, bounds connection/acknowledgement waits, resets readiness
+after service death, and keeps normal on-demand binding as a fallback. Live,
+adaptive, extraction-disabled and provider-image paths do not use this pre-start.
+
+The coverage planner remembers a completed forward or backward jump of one to
+thirty minutes for up to two minutes. After prioritizing the current strip, one
+in six healthy preparation turns may prepare a repeat of that distance and its
+neighbors. The existing 128-MiB speculative budget, per-request limits and
+playback health guard still apply. Smaller later gestures clear the prediction;
+out-of-range targets are rejected. This is a bounded heuristic, not a promise
+that arbitrary future timestamps are prepared.
+
+Verification: 127 preview JVM tests and all ten selected Android TV emulator
+tests passed. The device tests assert idempotent preparation and zero media
+requests before decoding. Worker preparation during the controlled playback
+test succeeded, with zero player errors, dropped frames and rebuffers, successful
+resume and five cached preview images. The fixture plays 1080p AVC while
+extracting separate 4K HEVC frames, so it is not evidence of full 4K physical-TV
+playback performance. Controlled cold-frame samples were 753 / 851 / 829 ms
+without explicit preparation and 782 / 807 / 816 ms after preparation. These
+samples do not demonstrate a material speedup on the emulator; its service
+process can remain cached between tests. Physical-device timing is required to
+evaluate the previous first-worker startup overhead.
+
+Evidence: `artifacts/preview-prestart-{cold,prepared,playback}.json`,
+`artifacts/preview-prestart-build.log` and
+`artifacts/preview-prestart-device-tests.txt`.
+
+Physical-TV verification used the same TCL and 86.41-GB Dune TorBox remux, with
+the normal signed release from `447d523b2`. The installed SHA-256 matched
+`4d890418007341eeba55e5953fa527b5d4d99c1838b3e67348b6944ca3d91a17`.
+The preview service was already running before the first seek, with no frame
+jobs logged beforehand. First-request provider time outside the worker fell
+from approximately 1,229 ms in the previous run to 244 ms here. This interval
+also includes source preparation, so it is not a pure process-start benchmark.
+
+Fresh +5/+10/+20-minute center displays took 3,312 / 2,201 / 2,278 ms. These are
+slower overall than the previous run at different positions; pre-start does not
+establish an end-to-end cold-preview speedup. Native source open/seek/read phases
+accounted for 2,389 / 1,562 / 1,703 ms, with center decoding alone taking
+541 / 502 / 440 ms. Three cached revisits displayed in 27 / 28 / 32 ms. Only
+four of five cold frames completed before auto-commit on the first two jumps;
+all five completed in 7,946 ms on the third. A cached revisit screenshot confirms
+two images on either side. No real-TV benefit from repeated-jump speculation is
+claimed: this run did not show playback-time frame preparation. Health and
+resource guards remain intact.
+
+Six advancing frame-presentation samples over roughly 41 seconds measured
+23.94–23.98 fps in five samples and 23.27 fps in one, which contained a 250.26-ms
+gap. Two dropped-frame batches of four were logged. Playback resumed after all
+three jumps, and the app remained alive after returning to details. These checks
+do not prove zero playback impact or meet the sub-500-ms uncached target.
+Evidence: `artifacts/tv-prestart-timing.log`,
+`artifacts/tv-prestart-measured-report.json`,
+`artifacts/tv-prestart-worker-before-seek.txt`,
+`artifacts/tv-prestart-final-steady-*.txt`, `artifacts/tv-prestart-cached.png`,
+and `artifacts/tv-prestart-installed-sha256.txt`.
