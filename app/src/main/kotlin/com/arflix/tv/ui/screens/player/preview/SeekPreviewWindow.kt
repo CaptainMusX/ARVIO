@@ -24,6 +24,8 @@ internal class SeekPreviewPlaybackGuard {
     private var healthySinceMs: Long? = null
     private var strainedUntilMs = 0L
 
+    fun onPlaybackInterrupted() { healthySinceMs = null }
+
     fun onPlaybackStrain(nowMs: Long) {
         healthySinceMs = null
         strainedUntilMs = nowMs + 30_000L
@@ -37,8 +39,9 @@ internal class SeekPreviewPlaybackGuard {
         browsing: Boolean,
         foreground: Boolean,
         resourceSafe: Boolean,
+        minimumBufferedMs: Long = 8_000L,
     ): Boolean {
-        if (!playing || !ready || bufferedMs < 8_000L || browsing || !foreground || !resourceSafe || nowMs < strainedUntilMs) {
+        if (!playing || !ready || bufferedMs < minimumBufferedMs.coerceAtLeast(4_000L) || browsing || !foreground || !resourceSafe || nowMs < strainedUntilMs) {
             healthySinceMs = null
             return false
         }

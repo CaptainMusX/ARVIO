@@ -4,6 +4,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SeekPreviewCoverageTest {
+    @Test fun `moving playback finishes distant strips before shifting the coverage window`() {
+        val planner = SeekPreviewCoverage()
+        val cached = mutableSetOf<Long>()
+        repeat(70) { tick ->
+            planner.next(60_000 + tick * 3_000L, 9_000_000, 86_000_000_000,
+                tick * 3_000L, 0, true) { it in cached }?.let { cached += it }
+        }
+        for (center in listOf(360_000L, 660_000L, 1_260_000L)) {
+            assertTrue("Missing prepared strip at $center", cached.containsAll(seekPreviewWindow(center, 9_000_000)))
+        }
+        assertTrue("Intermediate coverage must follow priority strips", cached.contains(240_000L))
+    }
+    @Test fun `moving 4K playback prepares five ten and twenty minute jumps early`() {
+        val planner = SeekPreviewCoverage()
+        val cached = mutableSetOf<Long>()
+        val targets = (0..14).mapNotNull { tick ->
+            planner.next(60_000 + tick * 3_000L, 9_000_000, 86_000_000_000,
+                tick * 3_000L, 0, true) { it in cached }?.also { cached += it }
+        }
+        assertTrue(targets.containsAll(listOf(360_000L, 660_000L, 1_260_000L)))
+        assertEquals(targets.size, targets.distinct().size)
+        assertTrue(targets.take(5).all { it < 150_000 })
+    }
+
+    @Test fun `forward preparation respects budget and movie end`() {
+        val planner = SeekPreviewCoverage()
+        repeat(40) { tick ->
+            val target = planner.next(100_000, 150_000, 86_000_000_000, tick.toLong(),
+                PREVIEW_SPECULATIVE_BYTES, true) { false }
+            if (target != null) assertTrue(target in 60_000 until 150_000)
+        }
+    }
+
     @Test fun `long jump intent prepares its repeat without starving the current strip`() {
         val planner = SeekPreviewCoverage()
         planner.noteSeek(360_000, 0, originMs = 60_000)
@@ -37,8 +70,13 @@ class SeekPreviewCoverageTest {
         planner.endGesture()
         planner.noteSeek(370_000, 1, originMs = 360_000)
         planner.endGesture()
-        repeat(5) { planner.next(370_000, 9_000_000, 86_000_000_000, 2, 0, true) { false } }
-        assertNotEquals(670_000L, planner.next(370_000, 9_000_000, 86_000_000_000, 2, 0, true) { false })
+        val fresh = SeekPreviewCoverage()
+        fresh.noteSeek(370_000, 1, originMs = 360_000)
+        fresh.endGesture()
+        repeat(12) {
+            assertEquals(fresh.next(370_000, 9_000_000, 86_000_000_000, 2, 0, true) { false },
+                planner.next(370_000, 9_000_000, 86_000_000_000, 2, 0, true) { false })
+        }
     }
     @Test fun `adaptive preparation finishes a nearby window before sparse coverage`() {
         val planner = SeekPreviewCoverage()

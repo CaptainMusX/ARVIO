@@ -508,3 +508,103 @@ Evidence: `artifacts/tv-prestart-timing.log`,
 `artifacts/tv-prestart-worker-before-seek.txt`,
 `artifacts/tv-prestart-final-steady-*.txt`, `artifacts/tv-prestart-cached.png`,
 and `artifacts/tv-prestart-installed-sha256.txt`.
+
+### Preparing multi-minute 4K targets during playback (30 October 2026)
+
+The physical-TV diagnostic run established why preparation had not been running:
+the 86.41-GB remux generally had only 3.7–7.6 seconds buffered. An occasional
+higher sample did not satisfy eight continuous healthy seconds above the old
+eight-second reserve. Native support, memory classification and unmetered network
+checks all passed, but no frame preparation ran. Twelve baseline frame-presentation
+samples were 23.94–24.01 fps with no gaps over 100 ms.
+
+The isolated, low-priority native worker now uses a four-second minimum reserve,
+still requiring eight seconds of healthy playback before eligibility. A new
+native preparation job starts only while the main player is not loading. The
+250-ms monitor cancels work when eligibility is lost. Image-provider and Media3
+paths retain their eight-second threshold; low-memory and metered-device
+restrictions remain. Playback-strain cooldown survives effect restarts, while
+interruptions reset the healthy-playback timer. A native preparation job may
+read up to eight MiB (the observed first 4K frame required 4.68 MiB); the total
+128-MiB speculative budget remains. The main playback buffer is unchanged.
+
+After the initial local strip, preparation alternates local detail with stable
+distant points: +5, +10, +20 minutes, additional landmarks and neighboring frames,
+then 30-second gaps followed by finer ten-second coverage. The anchor uses a
+30-second grid and remains stable for up to five minutes, allowing distant strips
+to finish before priority points move. A rewind or a jump beyond that window
+reanchors it. This is gradual bounded coverage, not an instant full-film storyboard.
+
+All 131 preview JVM tests pass, including moving-playhead distant-strip coverage,
+budget/EOF constraints, reserve cancellation, cooldown persistence and reset.
+In the first physical-TV preparation run, 47 frames were prepared before seeking,
+using 81.35 MiB of additional media reads. +5/+10/+20-minute centers became ready
+55.2 / 61.2 / 69.2 seconds after the first playing-state sample. Later selection
+of those targets displayed timestamp-validated memory frames in 27 / 41 / 20 ms.
+Actual seeks between test positions were approximately +2 / +5 / +10 minutes;
+the +5/+10/+20 labels refer to the original preparation anchor. Eighteen advancing
+presentation samples during preparation were 23.94–24.01 fps with a largest gap
+of 66.64 ms, none over 100 ms, and no logged dropped-frame batches or audio
+underruns. Playback resumed successfully afterward. These are sampled results
+on one real 4K source, not a guarantee for every device, network or uncached point.
+
+That first run used a two-minute anchor lifetime and left one neighbor at the
+farthest point incomplete before seeking. The final five-minute lifetime addresses
+that coverage churn; the regression test checks that all three distant strips
+and intermediate coverage are prepared while playback advances.
+
+Evidence: `artifacts/tv-ahead-diagnostic-timing.log`,
+`artifacts/tv-ahead-baseline-measured-report.json`,
+`artifacts/tv-ahead-timing.log`, `artifacts/tv-ahead-measured-report.json`,
+`artifacts/tv-ahead-final-steady-*.txt`, `artifacts/tv-ahead-jump*.png`,
+and `artifacts/preview-ahead-build5.log`.
+
+The final five-minute-window TV run prepared 67 frames before the first seek,
+with 102.68 MiB of media reads. All five images around the +5/+10/+20-minute
+landmarks were ready after 84.1 / 102.3 / 124.9 seconds respectively. Those
+landmarks were relative to the preparation anchor, not the later playhead.
+Selections at 116:32, 126:32 and 111:32 displayed validated memory frames in
+28 / 37 / 28 ms; the ten-minute jump to 126:32 showed the complete five-image
+strip immediately in the captured UI. The prepared intermediate frame at 113:32
+displayed in 11 ms on a controlled recheck. The initial rapid rewind's center
+was visible in the screenshot but lacked a new display timing event, so that
+first sample intentionally remains unquantified in the report.
+
+Twenty-four advancing playback samples during preparation measured
+23.94–24.01 fps, with maximum gap 66.69 ms and none over 100 ms. No dropped-frame
+batches or audio underruns were logged in this run, and playback resumed after
+the seeks. This verifies prepared-target latency on the tested remux; a new
+source still needs preparation time, and an unprepared timestamp can still use
+the slower extraction path. Memory, network, buffering or playback-strain guards
+can defer preparation.
+
+Final-run evidence: `artifacts/tv-ahead-complete-timing.log`,
+`artifacts/tv-ahead-complete-measured-report.json`,
+`artifacts/tv-ahead-complete-final-steady-*.txt`,
+`artifacts/tv-ahead-complete-jump2.png`,
+`artifacts/tv-ahead-complete-intermediate-recheck.png` and
+`artifacts/tv-ahead-complete-resumed.txt`. These measurements used signed APK
+SHA-256 `05a3c06a5a6f909c6f2deda8d8b1b9eb76afc61c50ca5c4a92cd50209f47262e`.
+
+The implementation was rebased onto main `fb9afc168` (including the concurrent
+Trakt fixes) as `b787e3d1e`. The final build passed 216 preview/Trakt JVM tests
+with zero failures/errors and produced a signed, non-debuggable ARM release.
+Installed APK SHA-256 was verified on the TV as
+`f4f6bc3c468219f28d72624b4a1d5dc910aca26e1ebaabaadbe969635dcc4637`.
+
+A separate smoke test on that exact APK confirmed the same 86.41 GB source,
+background extraction, all five preview slots and resumed playback. Three
+advancing steady samples measured 23.98–24.01 fps with no gap over 100 ms.
+This short smoke test also logged 13 dropped frames during startup before
+preparation and one after resuming; it is not a zero-dropped-frame claim.
+An unprepared target took 1.75 seconds, then its cached recheck took 23 ms,
+confirming the distinction between cold extraction and prepared display.
+The longer preparation benchmark above is kept separate from this smoke test.
+
+Evidence: `artifacts/preview-ahead-main-build.log`,
+`artifacts/preview-ahead-main-release-verification.json`,
+`artifacts/tv-ahead-main-installed-sha256.txt`,
+`artifacts/tv-ahead-main-smoke-timing.log`,
+`artifacts/tv-ahead-main-smoke-measured-report.json`,
+`artifacts/tv-ahead-main-preview-ready.png` and
+`artifacts/tv-ahead-main-smoke-resumed.txt`.
