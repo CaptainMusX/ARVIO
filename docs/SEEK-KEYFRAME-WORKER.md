@@ -558,3 +558,53 @@ Evidence: `artifacts/tv-ahead-diagnostic-timing.log`,
 `artifacts/tv-ahead-timing.log`, `artifacts/tv-ahead-measured-report.json`,
 `artifacts/tv-ahead-final-steady-*.txt`, `artifacts/tv-ahead-jump*.png`,
 and `artifacts/preview-ahead-build5.log`.
+
+The final five-minute-window TV run prepared 67 frames before the first seek,
+with 102.68 MiB of media reads. All five images around the +5/+10/+20-minute
+landmarks were ready after 84.1 / 102.3 / 124.9 seconds respectively. Those
+landmarks were relative to the preparation anchor, not the later playhead.
+Selections at 116:32, 126:32 and 111:32 displayed validated memory frames in
+28 / 37 / 28 ms; the ten-minute jump to 126:32 showed the complete five-image
+strip immediately in the captured UI. The prepared intermediate frame at 113:32
+displayed in 11 ms on a controlled recheck. The initial rapid rewind's center
+was visible in the screenshot but lacked a new display timing event, so that
+first sample intentionally remains unquantified in the report.
+
+Twenty-four advancing playback samples during preparation measured
+23.94–24.01 fps, with maximum gap 66.69 ms and none over 100 ms. No dropped-frame
+batches or audio underruns were logged in this run, and playback resumed after
+the seeks. This verifies prepared-target latency on the tested remux; a new
+source still needs preparation time, and an unprepared timestamp can still use
+the slower extraction path. Memory, network, buffering or playback-strain guards
+can defer preparation.
+
+Final-run evidence: `artifacts/tv-ahead-complete-timing.log`,
+`artifacts/tv-ahead-complete-measured-report.json`,
+`artifacts/tv-ahead-complete-final-steady-*.txt`,
+`artifacts/tv-ahead-complete-jump2.png`,
+`artifacts/tv-ahead-complete-intermediate-recheck.png` and
+`artifacts/tv-ahead-complete-resumed.txt`. These measurements used signed APK
+SHA-256 `05a3c06a5a6f909c6f2deda8d8b1b9eb76afc61c50ca5c4a92cd50209f47262e`.
+
+The implementation was rebased onto main `fb9afc168` (including the concurrent
+Trakt fixes) as `b787e3d1e`. The final build passed 216 preview/Trakt JVM tests
+with zero failures/errors and produced a signed, non-debuggable ARM release.
+Installed APK SHA-256 was verified on the TV as
+`f4f6bc3c468219f28d72624b4a1d5dc910aca26e1ebaabaadbe969635dcc4637`.
+
+A separate smoke test on that exact APK confirmed the same 86.41 GB source,
+background extraction, all five preview slots and resumed playback. Three
+advancing steady samples measured 23.98–24.01 fps with no gap over 100 ms.
+This short smoke test also logged 13 dropped frames during startup before
+preparation and one after resuming; it is not a zero-dropped-frame claim.
+An unprepared target took 1.75 seconds, then its cached recheck took 23 ms,
+confirming the distinction between cold extraction and prepared display.
+The longer preparation benchmark above is kept separate from this smoke test.
+
+Evidence: `artifacts/preview-ahead-main-build.log`,
+`artifacts/preview-ahead-main-release-verification.json`,
+`artifacts/tv-ahead-main-installed-sha256.txt`,
+`artifacts/tv-ahead-main-smoke-timing.log`,
+`artifacts/tv-ahead-main-smoke-measured-report.json`,
+`artifacts/tv-ahead-main-preview-ready.png` and
+`artifacts/tv-ahead-main-smoke-resumed.txt`.
