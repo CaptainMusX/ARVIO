@@ -171,6 +171,19 @@ class ProvidedSourceLookupTest {
         assertEquals(manual.url, model.uiState.value.selectedStreamUrl)
     }
 
+    @Test fun refreshedHeadersFromTheSameProviderRemainAvailableWithoutChangingThePlayingRequest() = runBlocking {
+        val playing = stream("addon", "https://cdn.example/movie.mkv").copy(
+            behaviorHints = StreamBehaviorHints(proxyHeaders = ProxyHeaders(request = mapOf("Authorization" to "Bearer old"))))
+        val refreshed = playing.copy(behaviorHints = StreamBehaviorHints(
+            proxyHeaders = ProxyHeaders(request = mapOf("Authorization" to "Bearer renewed"))))
+        state().value = state().value.copy(selectedStream = playing, selectedStreamUrl = playing.url, streams = listOf(playing))
+        coEvery { sources.resolveMovieStreams(any(), any(), any(), any(), any()) } returns StreamResult(listOf(refreshed), emptyList())
+        populate(playing.url)
+        assertEquals(playing, model.uiState.value.selectedStream)
+        assertTrue(model.uiState.value.streams.containsAll(listOf(playing, refreshed)))
+        assertTrue(canTryFailoverSource(refreshed, playing, playing.url, emptySet()))
+    }
+
     @Test fun latePrimaryResultsDoNotOverwriteAManualSourceStillResolving() = runBlocking {
         val manual = stream("manual", "https://other.example/movie.mkv")
         val resolved = CompletableDeferred<StreamSource?>()
@@ -179,6 +192,7 @@ class ProvidedSourceLookupTest {
         populate()
         assertEquals(manual, model.uiState.value.selectedStream)
         assertEquals(placeholder.url, model.uiState.value.selectedStreamUrl)
+        assertTrue(model.uiState.value.isLoading)
         resolved.complete(manual)
         withTimeout(5_000) { model.uiState.first { it.selectedStreamUrl == manual.url } }
     }

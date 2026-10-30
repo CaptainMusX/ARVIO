@@ -8195,7 +8195,7 @@ class PlayerViewModel @Inject constructor(
         val stillActive = sourceLookupStillActive(currentJob)
         if (state.streams.isNotEmpty() || !state.selectedStreamUrl.isNullOrBlank()) {
             _uiState.value = state.copy(
-                isLoading = false,
+                isLoading = state.isLoading && streamSelectionJob?.isActive == true,
                 isLoadingStreams = false,
                 sourceSearchActive = stillActive,
                 streamProgress = null,
@@ -8263,7 +8263,7 @@ class PlayerViewModel @Inject constructor(
         val latest = _uiState.value.streams
 
         val updated = (latest + validSources)
-            .distinctBy(::providerScopedStreamIdentity)
+            .distinctBy { providerScopedStreamIdentity(it) to playbackRequestIdentity(it) }
         val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
         val sortedStreams = sortStreamsByQualityAndSize(updated, preferredLanguage)
         val shouldAutoplayHomeServer = _uiState.value.selectedStreamUrl.isNullOrBlank()
@@ -8332,7 +8332,7 @@ class PlayerViewModel @Inject constructor(
         val latest = _uiState.value.streams
 
         val updated = (latest + validVodSources)
-            .distinctBy(::providerScopedStreamIdentity)
+            .distinctBy { providerScopedStreamIdentity(it) to playbackRequestIdentity(it) }
         val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
         val sortedStreams = sortStreamsByQualityAndSize(updated, preferredLanguage)
         val shouldAutoplayVod = _uiState.value.selectedStreamUrl.isNullOrBlank()
@@ -8420,7 +8420,7 @@ class PlayerViewModel @Inject constructor(
                 if (playbackUrl.isNotBlank()) StreamSource(source = "Direct", addonName = "Direct", quality = "Direct", size = "", url = playbackUrl) else null
             )
             val mergedStreams = (allStreams + existingVod + activeStreamList)
-                .distinctBy(::providerScopedStreamIdentity)
+                .distinctBy { providerScopedStreamIdentity(it) to playbackRequestIdentity(it) }
 
             val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
             val sortedStreams = sortStreamsByQualityAndSize(mergedStreams, preferredLanguage)
