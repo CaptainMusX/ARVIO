@@ -8251,6 +8251,7 @@ class PlayerViewModel @Inject constructor(
             )
         }
 
+        currentCoroutineContext().ensureActive()
         val validSources = sources.filter { !it.url.isNullOrBlank() }
         if (validSources.isEmpty()) {
             finishSupplementalSourceLookupIfReady(
@@ -8319,6 +8320,7 @@ class PlayerViewModel @Inject constructor(
             )
         }
 
+        currentCoroutineContext().ensureActive()
         val validVodSources = vodSources.filter { !it.url.isNullOrBlank() }
         if (validVodSources.isEmpty()) {
             finishSupplementalSourceLookupIfReady(
@@ -8405,6 +8407,7 @@ class PlayerViewModel @Inject constructor(
                 )
             }
 
+            currentCoroutineContext().ensureActive()
             val allStreams = result.streams
                 .filter { stream ->
                     val u = stream.url?.trim().orEmpty()
@@ -8421,11 +8424,14 @@ class PlayerViewModel @Inject constructor(
 
             val preferredLanguage = _uiState.value.preferredAudioLanguage.ifBlank { "en" }
             val sortedStreams = sortStreamsByQualityAndSize(mergedStreams, preferredLanguage)
-            val selectedMatch = findProvidedSelectedStreamMatch(sortedStreams, playbackUrl)
+            val playingUrl = _uiState.value.selectedStreamUrl ?: playbackUrl
+            val playingIndex = playingRequestIndex(sortedStreams, _uiState.value.selectedStream, playingUrl)
+            val selectedMatch = sortedStreams.getOrNull(playingIndex)
+                ?: findProvidedSelectedStreamMatch(sortedStreams, playingUrl)
 
             val shouldAutoplay = _uiState.value.selectedStreamUrl.isNullOrBlank()
             val prevSource = _uiState.value.selectedStream?.source.orEmpty()
-            val selectedForState = if (shouldAutoplay) {
+            val selectedForState = if (shouldAutoplay || streamSelectionJob?.isActive == true) {
                 _uiState.value.selectedStream
             } else {
                 selectedMatch ?: _uiState.value.selectedStream

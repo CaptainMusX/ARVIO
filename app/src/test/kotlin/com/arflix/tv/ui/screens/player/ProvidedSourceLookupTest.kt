@@ -3,12 +3,15 @@ package com.arflix.tv.ui.screens.player
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import com.arflix.tv.data.model.MediaType
+import com.arflix.tv.data.model.ProxyHeaders
+import com.arflix.tv.data.model.StreamBehaviorHints
 import com.arflix.tv.data.model.StreamSource
 import com.arflix.tv.data.repository.StreamRepository
 import com.arflix.tv.data.repository.StreamResult
 import io.mockk.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -146,6 +149,58 @@ class ProvidedSourceLookupTest {
         assertEquals(2_100_000L, model.uiState.value.savedPosition)
     }
 
+    @Test fun sameUrlFromAnotherProviderCannotReplaceThePlayingRequestsHeaders() = runBlocking {
+        val playing = stream("playing", "https://cdn.example/movie.mkv").copy(
+            behaviorHints = StreamBehaviorHints(proxyHeaders = ProxyHeaders(request = mapOf("Referer" to "A"))))
+        val alternative = playing.copy(addonId = "other", source = "other", quality = "4K", size = "6 GB",
+            behaviorHints = StreamBehaviorHints(proxyHeaders = ProxyHeaders(request = mapOf("Referer" to "B"))))
+        state().value = state().value.copy(selectedStream = playing, selectedStreamUrl = playing.url, streams = listOf(playing))
+        coEvery { sources.resolveMovieStreams(any(), any(), any(), any(), any()) } returns StreamResult(listOf(alternative), emptyList())
+        populate(playing.url)
+        assertEquals(playing, model.uiState.value.selectedStream)
+        val state = model.uiState.value
+        assertEquals(playing, state.streams[playingRequestIndex(state.streams, state.selectedStream, state.selectedStreamUrl)])
+        assertTrue(canTryFailoverSource(alternative, state.selectedStream, state.selectedStreamUrl, emptySet()))
+    }
+
+    @Test fun latePrimaryResultsDoNotOverwriteAManuallySelectedSource() = runBlocking {
+        val manual = stream("manual", "https://other.example/movie.mkv")
+        state().value = state().value.copy(selectedStream = manual, selectedStreamUrl = manual.url)
+        populate()
+        assertEquals(manual, model.uiState.value.selectedStream)
+        assertEquals(manual.url, model.uiState.value.selectedStreamUrl)
+    }
+
+    @Test fun latePrimaryResultsDoNotOverwriteAManualSourceStillResolving() = runBlocking {
+        val manual = stream("manual", "https://other.example/movie.mkv")
+        val resolved = CompletableDeferred<StreamSource?>()
+        coEvery { sources.resolveStreamForPlayback(manual) } coAnswers { resolved.await() }
+        model.selectStream(manual)
+        populate()
+        assertEquals(manual, model.uiState.value.selectedStream)
+        assertEquals(placeholder.url, model.uiState.value.selectedStreamUrl)
+        resolved.complete(manual)
+        withTimeout(5_000) { model.uiState.first { it.selectedStreamUrl == manual.url } }
+    }
+
+    @Test fun cancelledSupplementalLookupCannotAppendToTheNextMediaItem() = runBlocking {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val stale = stream("home_server", "https://home.example/old.mkv")
+        coEvery { sources.resolveMovieHomeServerSources(any(), any(), any(), any(), any()) } coAnswers {
+            withContext(NonCancellable) { entered.complete(Unit); release.await(); listOf(stale) }
+        }
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            invokeSuspend("appendHomeServerSourcesInBackground", MediaType.MOVIE, "tt42", null, null, 1_000L)
+        }
+        withTimeout(5_000) { entered.await() }
+        job.cancel()
+        release.complete(Unit)
+        job.join()
+        assertFalse(model.uiState.value.streams.contains(stale))
+        assertTrue(model.uiState.value.sourceSearchActive)
+    }
+
     private fun stream(id: String, url: String) = StreamSource(id, id, id, "1080p", "2 GB", url = url)
     private fun field(name: String) = PlayerViewModel::class.java.getDeclaredField(name).apply { isAccessible = true }
     @Suppress("UNCHECKED_CAST")
@@ -158,8 +213,8 @@ class ProvidedSourceLookupTest {
         PlayerViewModel::class.java.declaredMethods.single { it.name == "finishSupplementalSourceLookupIfReady" }
             .apply { isAccessible = true }.invoke(model, job, PlayerMessage.Raw("No sources"))
     }
-    private suspend fun populate() = invokeSuspend("populateStreamsForProvidedUrl", MediaType.MOVIE,
-        42, null, null, "tt42", placeholder.url)
+    private suspend fun populate(url: String? = placeholder.url) = invokeSuspend("populateStreamsForProvidedUrl", MediaType.MOVIE,
+        42, null, null, "tt42", url)
     private suspend fun invokeSuspend(name: String, vararg arguments: Any?): Unit = suspendCoroutine { continuation ->
         try {
             val method = PlayerViewModel::class.java.declaredMethods.single { it.name == name }.apply { isAccessible = true }

@@ -38,3 +38,8 @@ internal fun canTryFailoverSource(
     val request = playbackRequestIdentity(candidate) ?: return false
     return request != playbackRequestIdentity(playingStream, playingUrl) && request !in placeholders
 }
+
+internal fun playingRequestIndex(streams: List<StreamSource>, playing: StreamSource?, url: String?): Int {
+    val request = playbackRequestIdentity(playing, url) ?: return -1
+    return streams.indexOfFirst { playbackRequestIdentity(it) == request }
+}

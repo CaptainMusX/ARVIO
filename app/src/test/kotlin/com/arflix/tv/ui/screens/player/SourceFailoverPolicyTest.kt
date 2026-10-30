@@ -87,6 +87,20 @@ class SourceFailoverPolicyTest {
         assertFalse(identity.toString().contains("cdn.example"))
     }
 
+    @Test fun thePlayingRowIsNotConfusedWithAnEarlierHeaderDistinctAlternative() {
+        val playing = source(headers = mapOf("Referer" to "A"))
+        val alternative = source(id = "b", headers = mapOf("Referer" to "B"))
+        assertEquals(1, playingRequestIndex(listOf(alternative, playing), playing, playing.url))
+    }
+
+    @Test fun reorderedListsAnchorOnThePlayingRequestRatherThanTheOldIndex() {
+        val playing = source()
+        val other = source(url = "https://other.example/movie.mkv")
+        assertEquals(0, playingRequestIndex(listOf(playing, other), playing, playing.url))
+        assertEquals(1, playingRequestIndex(listOf(other, playing), playing, playing.url))
+        assertEquals(-1, playingRequestIndex(listOf(other), playing, playing.url))
+    }
+
     @Test fun finishingAddonsDoesNotFinishPendingHomeServerLookup() {
         assertTrue(playerSourceLookupActive(primaryFinished = true, homeServerActive = true, iptvActive = false))
     }

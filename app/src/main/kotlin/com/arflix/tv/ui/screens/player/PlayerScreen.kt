@@ -2530,9 +2530,9 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     LaunchedEffect(uiState.selectedStreamUrl, uiState.streams) {
         val currentUrl = uiState.selectedStreamUrl ?: return@LaunchedEffect
         val selected = uiState.selectedStream
-        val idxByUrl = uiState.streams.indexOfFirst { it.url == currentUrl }
-        val idx = if (idxByUrl >= 0) {
-            idxByUrl
+        val idxByRequest = playingRequestIndex(uiState.streams, selected, currentUrl)
+        val idx = if (idxByRequest >= 0) {
+            idxByRequest
         } else {
             uiState.streams.indexOfFirst { candidate ->
                 selected != null &&
