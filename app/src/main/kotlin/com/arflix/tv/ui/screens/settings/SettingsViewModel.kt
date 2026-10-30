@@ -265,6 +265,7 @@ data class SettingsUiState(
     val historyCount: Int = 0,
     // Trakt
     val isTraktAuthenticated: Boolean = false,
+    val traktReconnectRequired: Boolean = false,
     val traktCode: TraktDeviceCode? = null,
     /** Wall clock time the current activation code dies, so the dialog can count down. */
     val traktCodeExpiresAtMillis: Long? = null,
@@ -459,7 +460,8 @@ class SettingsViewModel @Inject constructor(
     private val streamIntegrationRepository: StreamIntegrationRepository,
     private val pluginManager: PluginManager,
     private val telegramRepository: TelegramRepository,
-    private val communityAddonRepository: CommunityAddonRepository
+    private val communityAddonRepository: CommunityAddonRepository,
+    private val traktManualSync: com.arflix.tv.data.repository.TraktManualSync
 ) : ViewModel() {
     private fun visibleCatalogs(catalogs: List<CatalogConfig>): List<CatalogConfig> {
         return catalogs.filter { config ->
@@ -636,6 +638,7 @@ class SettingsViewModel @Inject constructor(
         observeTorrServer()
         observeHomeServer()
         observeSyncState()
+        observeTraktConnection()
         observeAuthState()
         observeIptvConfig()
         observeIptvGroupPrefs()
@@ -864,6 +867,8 @@ class SettingsViewModel @Inject constructor(
             }
 
             if (profileManager.getProfileIdSync() != loadProfileId) return@launch
+            val traktConnection = traktRepository.connection.first()
+            if (traktConnection.profileId != loadProfileId) return@launch
             val currentState = _uiState.value
             _uiState.value = currentState.copy(
                 defaultSubtitle = defaultSub,
@@ -906,7 +911,8 @@ class SettingsViewModel @Inject constructor(
                 spoilerBlurEnabled = spoilerBlurEnabled,
                 isLoggedIn = isLoggedIn,
                 accountEmail = accountEmail,
-                isTraktAuthenticated = isTrakt,
+                isTraktAuthenticated = traktConnection.connected,
+                traktReconnectRequired = traktConnection.reconnectRequired,
                 traktExpiration = traktExpiration,
                 watchlistCount = watchlistCount,
                 historyCount = historyCount,
@@ -1179,12 +1185,26 @@ class SettingsViewModel @Inject constructor(
         // Observe sync status
         viewModelScope.launch {
             traktSyncService.isSyncing.collect { isSyncing ->
-                if (_uiState.value.isSyncing != isSyncing) {
-                    _uiState.value = _uiState.value.copy(isSyncing = isSyncing)
+                val busy = isSyncing || manualTrackingSync
+                if (_uiState.value.isSyncing != busy) {
+                    _uiState.value = _uiState.value.copy(isSyncing = busy)
                 }
             }
         }
 
+    }
+
+    private fun observeTraktConnection() {
+        viewModelScope.launch {
+            traktRepository.connection.collect { connection ->
+                if (connection.profileId != profileManager.getProfileIdSync()) return@collect
+                _uiState.value = _uiState.value.copy(
+                    isTraktAuthenticated = connection.connected,
+                    traktReconnectRequired = connection.reconnectRequired,
+                    traktUsername = _uiState.value.traktUsername.takeIf { connection.connected }
+                )
+            }
+        }
     }
 
     private fun formatSyncTime(isoTime: String?): String? {
@@ -1379,6 +1399,50 @@ class SettingsViewModel @Inject constructor(
     // ========== App Updates ==========
 
     private var lastManualSyncTimeMs = 0L
+    private var manualTrackingSync = false
+
+    fun forceTraktSync() {
+        val now = System.currentTimeMillis()
+        if (_uiState.value.isSyncing || now - lastManualSyncTimeMs < 10_000L) return
+        lastManualSyncTimeMs = now
+        viewModelScope.launch {
+            val profileId = profileManager.getProfileIdSync()
+            manualTrackingSync = true
+            _uiState.value = _uiState.value.copy(isSyncing = true)
+            try {
+                val result = withContext(Dispatchers.IO) { traktManualSync.sync() }
+                if (profileManager.getProfileIdSync() != profileId) return@launch
+                _uiState.value = when (result) {
+                    is SyncResult.Success -> _uiState.value.copy(
+                        syncedMovies = result.moviesSynced,
+                        syncedEpisodes = result.episodesSynced,
+                        lastSyncTime = formatSyncTime(java.time.Instant.now().toString()),
+                        toastMessage = SettingsMessage.Res(R.string.settings_sync_summary,
+                            listOf(result.moviesSynced, result.episodesSynced)),
+                        toastType = ToastType.SUCCESS
+                    )
+                    is SyncResult.Error -> _uiState.value.copy(
+                        syncProgress = SyncProgress(status = SyncStatus.ERROR, message = result.message),
+                        toastMessage = if (result.reconnectRequired) SettingsMessage.Res(R.string.trakt_reconnect_required)
+                            else SettingsMessage.Res(R.string.sync_failed, listOf(result.message)),
+                        toastType = ToastType.ERROR
+                    )
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                if (profileManager.getProfileIdSync() == profileId) {
+                    _uiState.value = _uiState.value.copy(
+                        syncProgress = SyncProgress(status = SyncStatus.ERROR, message = error.message.orEmpty()),
+                        toastMessage = SettingsMessage.Res(R.string.sync_failed, listOf(error.message.orEmpty())),
+                        toastType = ToastType.ERROR
+                    )
+                }
+            } finally {
+                manualTrackingSync = false
+                _uiState.value = _uiState.value.copy(isSyncing = traktSyncService.isSyncing.value)
+            }
+        }
+    }
 
     fun syncAllTrackingProviders(silent: Boolean = false) {
         val now = System.currentTimeMillis()
@@ -1391,6 +1455,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             if (_uiState.value.isSyncing) return@launch
             withContext(Dispatchers.Main) {
+                manualTrackingSync = true
                 _uiState.value = _uiState.value.copy(isSyncing = true)
             }
             try {
@@ -1500,8 +1565,9 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
             } finally {
-                withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(isSyncing = false)
+                withContext(Dispatchers.Main + kotlinx.coroutines.NonCancellable) {
+                    manualTrackingSync = false
+                    _uiState.value = _uiState.value.copy(isSyncing = traktSyncService.isSyncing.value)
                 }
             }
         }

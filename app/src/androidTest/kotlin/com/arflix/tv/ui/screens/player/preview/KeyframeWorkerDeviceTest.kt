@@ -17,7 +17,10 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class KeyframeWorkerDeviceTest {
-    @Test fun controlledColdRangeBenchmark() = runBlocking<Unit> {
+    @Test fun controlledColdRangeBenchmark() = runBlocking<Unit> { coldRangeBenchmark(false) }
+    @Test fun prestartedWorkerColdRangeBenchmark() = runBlocking<Unit> { coldRangeBenchmark(true) }
+
+    private suspend fun coldRangeBenchmark(prepareWorker: Boolean) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val input = File(context.getExternalFilesDir(null), "preview-stress-4k-main10.mkv")
@@ -78,8 +81,13 @@ class KeyframeWorkerDeviceTest {
                     provider.configure(SeekPreviewSource("http://127.0.0.1:${server.listeningPort}/video.mkv", emptyMap(),
                         "cold-range-${SystemClock.elapsedRealtime()}-$round", 32_000,
                         false, false, useNativeKeyframes = true))
+                    if (prepareWorker) {
+                        assertTrue("Worker can bind and load before a seek", provider.prepareWorker())
+                        assertEquals("Preparing the worker must not contact the source", requestsBefore, requests.get())
+                        assertNull(provider.memoryFrameAt(target))
+                    }
                     val start = SystemClock.elapsedRealtime()
-                    val frame = provider.frameAt(target)
+                    val frame = provider.frameAt(target, playbackPaused = true)
                     val centerMs = SystemClock.elapsedRealtime() - start
                     val centerBytes = transferred.get() - bytesBefore
                     assertNotNull("Uncached 4K target must decode", frame)
@@ -102,8 +110,8 @@ class KeyframeWorkerDeviceTest {
             }
         } finally {
             server.stop()
-            File(context.getExternalFilesDir(null), "seek-preview-benchmark-report.json")
-                .writeText(JSONObject().put("samples", results).toString(2))
+            File(context.getExternalFilesDir(null), if (prepareWorker) "seek-preview-prestarted-report.json" else "seek-preview-benchmark-report.json")
+                .writeText(JSONObject().put("workerPrestarted", prepareWorker).put("samples", results).toString(2))
         }
     }
 
@@ -134,10 +142,13 @@ class KeyframeWorkerDeviceTest {
         try {
             KeyframeWorkerClient(instrumentation.targetContext).use { worker ->
                 val url = "http://127.0.0.1:${server.listeningPort}/bounded.mp4"
+                assertTrue(worker.prepare())
+                assertTrue("Repeated preparation is idempotent", worker.prepare())
+                assertTrue("Worker preparation must not open the media", ranges.isEmpty())
                 val first = worker.frameAt(url, 12_000, bytes.size.toLong())
                 assertNotNull(first)
                 val headersBefore = ranges.count { it.first == 0 }
-                val second = worker.frameAt(url, 20_000, bytes.size.toLong())
+                val second = worker.frameAt(url, 20_000, bytes.size.toLong(), playbackPaused = true)
                 assertNotNull(second)
                 assertEquals("A second seek must retain the demuxer", headersBefore, ranges.count { it.first == 0 })
                 assertTrue(kotlin.math.abs(second!!.positionMs - 20_000) <= 5_000)

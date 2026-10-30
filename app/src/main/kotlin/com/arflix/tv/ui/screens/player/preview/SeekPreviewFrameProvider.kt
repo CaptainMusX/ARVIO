@@ -71,6 +71,7 @@ internal const val RANGE_CHUNK_BYTES = 1024 * 1024
 private const val RANGE_MEMORY_LIMIT_BYTES = 8 * 1024 * 1024
 private const val MAX_EXTRACTION_NETWORK_BYTES = 16L * 1024L * 1024L
 internal const val BACKGROUND_PREVIEW_NETWORK_BYTES = 4L * 1024L * 1024L
+internal const val NATIVE_BACKGROUND_PREVIEW_NETWORK_BYTES = 8L * 1024L * 1024L
 internal const val SEEK_PREVIEW_REQUEST_TIMEOUT_MS = 10_000L
 private const val MEDIA3_FRAME_TIMEOUT_MS = 6_000L
 
@@ -427,8 +428,18 @@ class SeekPreviewFrameProvider internal constructor(
         if (closed || active !== source) emptyList() else frames
     }
 
-    suspend fun frameAt(positionMs: Long, cacheOnly: Boolean = false): SeekPreviewFrame? =
-        requestFrame(positionMs, cacheOnly, background = false)
+    suspend fun frameAt(positionMs: Long, cacheOnly: Boolean = false, playbackPaused: Boolean = false): SeekPreviewFrame? =
+        requestFrame(positionMs, cacheOnly, background = false, playbackPaused = playbackPaused)
+
+    suspend fun prepareWorker(): Boolean {
+        val source = active ?: return false
+        if (closed || source.unavailable || source.memoryDisabled || source.decoderDisabled ||
+            source.images != null || !source.source.allowExtraction || source.source.isAdaptive ||
+            !source.source.useNativeKeyframes) return false
+        return try { keyframeWorker.prepare() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { false }
+    }
 
     /** Only call when playback is stable. Foreground work preempts warming, never the reverse. */
     suspend fun warmAround(positionMs: Long, direction: Int = 1) {
@@ -452,8 +463,8 @@ class SeekPreviewFrameProvider internal constructor(
     fun endSeekGesture() { active?.coverage?.endGesture() }
 
     /** Cooperatively cancelled by the player's buffer/strain monitor; never parallel decoders. */
-    suspend fun warmPlayback(positionMs: Long, bufferedMs: Long) {
-        if (bufferedMs < 8_000) return
+    suspend fun warmPlayback(positionMs: Long, bufferedMs: Long, minimumBufferedMs: Long = 8_000L) {
+        if (bufferedMs < minimumBufferedMs.coerceAtLeast(4_000L)) return
         val source = active ?: return
         val foreground = synchronized(lock) { source.foregroundRequest }
         val imageOnly = source.images != null
@@ -541,14 +552,18 @@ class SeekPreviewFrameProvider internal constructor(
                     // never escalate into a decoder while constrained/heavy playback is active.
                     if (image == null && background && source.images != null) return@withTimeout null
                     if (image == null && source.source.allowExtraction && !source.source.isAdaptive && !source.decoderDisabled) {
+                        // A 4K random-access frame plus container headers can exceed
+                        // four MiB. Keep a per-job ceiling and the total sparse budget.
+                        val backgroundBudget = if (source.source.useNativeKeyframes)
+                            NATIVE_BACKGROUND_PREVIEW_NETWORK_BYTES else BACKGROUND_PREVIEW_NETWORK_BYTES
                         source.extractionBudgetBytes = if (wideCoverage)
-                            minOf(BACKGROUND_PREVIEW_NETWORK_BYTES,
+                            minOf(backgroundBudget,
                                 (PREVIEW_SPECULATIVE_BYTES - source.speculativeBytes.get()).coerceAtLeast(0))
-                        else if (background && !playbackPaused) BACKGROUND_PREVIEW_NETWORK_BYTES
+                        else if (background && !playbackPaused) backgroundBudget
                         else MAX_EXTRACTION_NETWORK_BYTES
                         origin = SeekPreviewOrigin.DECODER
                         image = decoderOverride?.invoke(source.source, decodePosition(source, target))
-                            ?: if (source.source.useNativeKeyframes) extractNativeKeyframe(source, target)
+                            ?: if (source.source.useNativeKeyframes) extractNativeKeyframe(source, target, playbackPaused)
                             else extractWithMedia3(source, target)
                     }
                     currentCoroutineContext().ensureActive()
@@ -734,11 +749,11 @@ class SeekPreviewFrameProvider internal constructor(
         }
     }
 
-    private suspend fun extractNativeKeyframe(source: ActiveSource, target: Long): SeekPreviewImage {
+    private suspend fun extractNativeKeyframe(source: ActiveSource, target: Long, playbackPaused: Boolean): SeekPreviewImage {
         val uri = localDecoderUri(source)
         source.proxy?.beginRequest(source.extractionBudgetBytes)
         return try {
-            keyframeWorker.frameAt(uri.toString(), decodePosition(source, target), source.proxy?.contentLength ?: -1)?.let {
+            keyframeWorker.frameAt(uri.toString(), decodePosition(source, target), source.proxy?.contentLength ?: -1, playbackPaused)?.let {
                 SeekPreviewImage(it.bitmap, actualPositionMs = it.positionMs)
             } ?: throw IOException("Native preview unavailable")
         } finally { source.proxy?.endRequest() }
@@ -927,7 +942,9 @@ internal class SeekPreviewDiskCache(private val root: File, private val limitByt
 
     fun contains(key: String): Boolean = File(root, "$key.preview").isFile
 
-    @Synchronized fun read(key: String, identity: String): CachedPreview? {
+    // Writers publish complete immutable entries by rename. Reads must not wait
+    // behind JPEG compression or pruning unrelated files on slow TV storage.
+    fun read(key: String, identity: String): CachedPreview? {
         val file = File(root, "$key.preview")
         if (!file.isFile || file.length() !in 1..MAX_CACHE_ENTRY_BYTES) return null
         return try {
@@ -944,10 +961,10 @@ internal class SeekPreviewDiskCache(private val root: File, private val limitByt
                 CachedPreview(bitmap, metadata)
             }
         } catch (failure: OutOfMemoryError) {
-            file.delete()
             throw failure
         } catch (_: Exception) {
-            file.delete()
+            // A concurrent eviction is a cache miss. Do not delete by pathname:
+            // another writer may already have replaced the entry we opened.
             null
         }
     }

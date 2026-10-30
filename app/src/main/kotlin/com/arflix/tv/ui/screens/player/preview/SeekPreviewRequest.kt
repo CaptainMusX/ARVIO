@@ -24,10 +24,10 @@ internal fun supportsNativeKeyframes(width: Int, height: Int, mime: String?): Bo
         mime in setOf("video/avc", "video/hevc", "video/dolby-vision", "video/x-vnd.on2.vp9")
 
 /** A cancelled decoder request is a missing frame, not a cancelled UI loading effect. */
-internal suspend fun loadSeekPreviewFrame(provider: SeekPreviewFrameProvider, targetMs: Long): SeekPreviewFrame? =
+internal suspend fun loadSeekPreviewFrame(provider: SeekPreviewFrameProvider, targetMs: Long, playbackPaused: Boolean = false): SeekPreviewFrame? =
     try {
         withTimeoutOrNull(SEEK_PREVIEW_REQUEST_TIMEOUT_MS + 1_000L) {
-            provider.cachedFrameAt(targetMs) ?: provider.frameAt(targetMs)
+            provider.cachedFrameAt(targetMs) ?: provider.frameAt(targetMs, playbackPaused = playbackPaused)
         }
     } catch (cancelled: CancellationException) {
         currentCoroutineContext().ensureActive()

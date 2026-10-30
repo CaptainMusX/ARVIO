@@ -1560,5 +1560,6 @@
   "This file's audio can't play in this browser. Requesting provider conversion…": "Tämän tiedoston ääntä ei voi toistaa tässä selaimessa. Pyydetään muuntamista palveluntarjoajalta…",
   "This source's audio can't play in this browser. Choose another source or use an external player.": "Tämän lähteen ääntä ei voi toistaa tässä selaimessa. Valitse toinen lähde tai käytä ulkoista soitinta.",
   "Converting the audio for your browser…": "Muunnetaan ääntä selaimellesi…",
-  "Picking the best source…": "Valitaan paras lähde…"
+  "Picking the best source…": "Valitaan paras lähde…",
+  "Ko-fi charges in US dollars; your bank converts the amount automatically.": "Ko-fi veloittaa Yhdysvaltain dollareina; pankkisi muuntaa summan automaattisesti."
 }

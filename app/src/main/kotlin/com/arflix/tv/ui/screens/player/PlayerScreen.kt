@@ -162,6 +162,7 @@ import com.arflix.tv.network.OkHttpProvider
 import com.arflix.tv.data.model.MediaType
 import com.arflix.tv.data.model.EpisodeIdentity
 import com.arflix.tv.data.model.StreamSource
+import com.arflix.tv.ui.screens.details.isAwaitingDebridDownload
 import com.arflix.tv.data.model.Subtitle
 import com.arflix.tv.ui.components.KeepScreenOn
 import com.arflix.tv.ui.components.LoadingIndicator
@@ -305,23 +306,6 @@ private const val QUICK_SEEK_DISMISS_DELAY_MS = 2_200L
 private const val SEEK_PREVIEW_DEBOUNCE_MS = 60L
 private const val MAX_SUBTITLE_OFFSET_MS = 120_000L
 private const val SUBTITLE_OFFSET_STEP_MS = 100L
-
-private fun isSafePlaybackHeader(name: String, value: String): Boolean {
-    return name.isNotBlank() &&
-        value.isNotBlank() &&
-        name.all { ch ->
-            ch.code in 33..126 &&
-                ch !in setOf('(', ')', '<', '>', '@', ',', ';', ':', '\\', '"', '/', '[', ']', '?', '=', '{', '}')
-        } &&
-        value.all { ch -> ch == '\t' || ch.code in 32..126 }
-}
-
-private fun Map<String, String>.safePlaybackHeaders(): Map<String, String> {
-    if (isEmpty()) return emptyMap()
-    return filter { (name, value) -> isSafePlaybackHeader(name.trim(), value.trim()) }
-        .mapKeys { (name, _) -> name.trim() }
-        .mapValues { (_, value) -> value.trim() }
-}
 
 /**
  * Resolves a [PlayerMessage] against the app language. Nested messages (e.g. the reference-source
@@ -511,6 +495,12 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     var nextEpisodeTransitionInProgress by remember { mutableStateOf(false) }
     var placeholderCheckedSource by remember { mutableStateOf<String?>(null) }
     var placeholderHandledSource by remember { mutableStateOf<String?>(null) }
+    // The source and placeholder status last written to the failover log, so each change logs once.
+    var placeholderLoggedCheck by remember { mutableStateOf<String?>(null) }
+    // The placeholder source still waiting for the source search to find something to switch to.
+    var placeholderAwaitingSources by remember { mutableStateOf<String?>(null) }
+    // Provider labels can differ for the same request; different access headers remain eligible.
+    var placeholderRequests by remember { mutableStateOf(emptySet<PlaybackRequestIdentity>()) }
     var loadedSource by remember { mutableStateOf<String?>(null) }
     var currentSourceIsLive by remember { mutableStateOf(args.isLiveStream) }
     var confirmedSource by remember { mutableStateOf<String?>(null) }
@@ -961,6 +951,10 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         longRebufferCount = 0
         autoAdvanceAttempts = 0
         triedStreamIndexes = emptySet()
+        placeholderRequests = emptySet()
+        placeholderAwaitingSources = null
+        placeholderHandledSource = null
+        placeholderLoggedCheck = null
         isAutoAdvancing = false
         userSelectedSourceManually = false
         readyPlayingSinceMs = null
@@ -991,6 +985,10 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     ): Boolean {
         val streams = uiState.streams
         return if (streams.size <= 1) {
+            sourceFailoverLog(
+                "no next source after ${uiState.selectedStream.failoverSummary()} reason=$reason " +
+                    "sources=${streams.size} searching=${uiState.sourceSearchActive}"
+            )
             viewModel.onFailoverAttempt(success = false)
             false
         } else {
@@ -1001,14 +999,28 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     candidate.url?.isNotBlank() == true &&
                         viewModel.isEligibleForAutomaticPlayback(candidate) &&
                         idx !in triedStreamIndexes &&
+                        canTryFailoverSource(candidate, uiState.selectedStream, uiState.selectedStreamUrl, placeholderRequests) &&
                         (skipAddonId.isNullOrBlank() || candidate.addonId != skipAddonId) &&
                         !viewModel.isPlaybackHostTemporarilyBad(candidate)
                 } ?: -1
 
             if (nextIndex < 0) {
+                sourceFailoverLog(
+                    "no next source after ${uiState.selectedStream.failoverSummary()} reason=$reason " +
+                        "sources=${streams.size} tried=${triedStreamIndexes.size} " +
+                        "blankUrl=${streams.count { it.url.isNullOrBlank() }} " +
+                        "awaitingDownload=${streams.count(::isAwaitingDebridDownload)} " +
+                        "notAutoplayable=${streams.count { !viewModel.isEligibleForAutomaticPlayback(it) }} " +
+                        "badHost=${streams.count { viewModel.isPlaybackHostTemporarilyBad(it) }} " +
+                        "skipAddon=${skipAddonId ?: "-"}"
+                )
                 viewModel.onFailoverAttempt(success = false)
                 false
             } else {
+                sourceFailoverLog(
+                    "switching source reason=$reason from=${uiState.selectedStream.failoverSummary()} " +
+                        "to=${streams[nextIndex].failoverSummary()} index=$currentStreamIndex->$nextIndex/${streams.size}"
+                )
                 viewModel.onFailoverAttempt(success = true)
                 autoAdvanceAttempts += 1
                 playbackStartupDiag(
@@ -1046,6 +1058,31 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                 viewModel.selectStream(streams[nextIndex])
                 true
             }
+        }
+    }
+
+    // A placeholder found while the source search was still running: try the next source each
+    // time more sources arrive, and stop once the search is over or another source is playing.
+    LaunchedEffect(placeholderAwaitingSources, uiState.streams, uiState.sourceSearchActive,
+        uiState.streamSelectionNonce, userSelectedSourceManually) {
+        val waitingSource = placeholderAwaitingSources ?: return@LaunchedEffect
+        // Let the index sync below place the playing source in the new list first; otherwise the
+        // search starts from the old one-entry list's index and skips the new list's first source.
+        kotlinx.coroutines.yield()
+        if (waitingSource != selectedSourceKey() || userSelectedSourceManually) {
+            placeholderAwaitingSources = null
+            return@LaunchedEffect
+        }
+        if (tryAdvanceToNextStream(
+                recordCurrentFailure = false,
+                reason = context.getString(R.string.player_fail_source_not_ready)
+            )
+        ) {
+            placeholderAwaitingSources = null
+            streamSelectedTime = System.currentTimeMillis()
+            startupRecoverAttempted = false
+        } else if (!uiState.sourceSearchActive) {
+            placeholderAwaitingSources = null
         }
     }
 
@@ -1832,6 +1869,17 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         )
     }
 
+    val latestSeekBrowsing by rememberUpdatedState(seekInteraction.browsing)
+    LaunchedEffect(hasPlaybackStarted, isPlaying, isBuffering, previewStatus.sourceGeneration, isCasting) {
+        if (!hasPlaybackStarted || !isPlaying || isBuffering || args.isLiveStream || isCasting) return@LaunchedEffect
+        delay(3_000)
+        if (exoPlayer.isPlaying && !latestSeekBrowsing &&
+            lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            // Bind and load native code only: no remote reads or speculative decoding.
+            seekPreviewProvider.prepareWorker()
+        }
+    }
+
     val controlsPreviewPosition = if (isControlScrubbing || seekInteraction.phase == SeekPhase.Exiting) scrubPreviewPosition else currentPosition
     val previewTarget = if (seekInteraction.phase != SeekPhase.Idle) seekInteraction.targetMs else currentPosition
     val previewRequested = !isCasting && !args.isLiveStream && hasPlaybackStarted && duration > 0L &&
@@ -1894,7 +1942,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         }
         if (previewStatus.capability == SeekPreviewCapability.UNAVAILABLE) return@LaunchedEffect
         delay(SEEK_PREVIEW_DEBOUNCE_MS)
-        val frame = loadSeekPreviewFrame(seekPreviewProvider, previewTarget)
+        val frame = loadSeekPreviewFrame(seekPreviewProvider, previewTarget, playbackPaused = !exoPlayer.playWhenReady)
         if (frame != null && seekPreviewProvider.matchesTarget(frame, previewTarget)) {
             seekPreviewFrame = frame
             seekPreviewProvider.warmWindow(previewTarget)
@@ -1904,7 +1952,6 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     }
 
     // Monitor continuously: a previously healthy buffer is not permission to keep downloading.
-    val latestSeekBrowsing by rememberUpdatedState(seekInteraction.browsing)
     // Low-memory TVs and heavy remuxes also accumulate rewind previews, without a second
     // video connection or decoder. Only cache a copy tied to a renderer timestamp.
     LaunchedEffect(hasPlaybackStarted, isPlaying, isBuffering, seekInteraction.phase,
@@ -1947,11 +1994,12 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
             }
         }
     }
+    val previewPlaybackGuard = remember(previewStatus.sourceGeneration) { SeekPreviewPlaybackGuard() }
     LaunchedEffect(hasPlaybackStarted, isBuffering, isPlaying, seekInteraction.phase,
         previewStatus.sourceGeneration, isCasting) {
         if (!hasPlaybackStarted || isBuffering || !isPlaying || seekInteraction.browsing ||
             args.isLiveStream || isCasting) return@LaunchedEffect
-        val guard = SeekPreviewPlaybackGuard()
+        val guard = previewPlaybackGuard
         val connectivity = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         val previewPlaybackListener = object : androidx.media3.exoplayer.analytics.AnalyticsListener {
             override fun onDroppedVideoFrames(eventTime: androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime,
@@ -1968,12 +2016,14 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         exoPlayer.addAnalyticsListener(previewPlaybackListener)
         var warming: Job? = null
         var nextWarmAt = 0L
+        var nextDiagnosticAt = 0L
         try {
             while (!playerReleased) {
                 val now = android.os.SystemClock.elapsedRealtime()
                 val format = exoPlayer.videoFormat
                 val imageOnly = uiState.selectedStream?.preview != null
                 val nativeSafe = useNativeSeekKeyframes && allowSecondarySeekPreviewDecoder && !isLowRamPlaybackDevice
+                val minimumPreviewBufferMs = if (nativeSafe && !imageOnly) 4_000L else 8_000L
                 val resourceSafe = imageOnly || nativeSafe || (!isLowRamPlaybackDevice && !isConstrainedPlaybackDevice && playbackMemoryClassMb >= 256 &&
                     !isLikelyHeavyStream(uiState.selectedStream) && format != null &&
                     format.width in 1..1920 && format.height in 1..1080 &&
@@ -1982,19 +2032,26 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     exoPlayer.playbackState == Player.STATE_READY && exoPlayer.playerError == null,
                     exoPlayer.totalBufferedDuration, latestSeekBrowsing,
                     lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED),
-                    resourceSafe && !connectivity.isActiveNetworkMetered)
+                    resourceSafe && !connectivity.isActiveNetworkMetered, minimumPreviewBufferMs)
+                if (now >= nextDiagnosticAt) {
+                    nextDiagnosticAt = now + 10_000L
+                    android.util.Log.println(android.util.Log.INFO, "SeekPreviewPlayback",
+                        "preparation safe=$safe bufferedMs=${exoPlayer.totalBufferedDuration} loading=${exoPlayer.isLoading} native=$nativeSafe lowRam=$isLowRamPlaybackDevice metered=${connectivity.isActiveNetworkMetered}")
+                }
                 if (!safe && warming?.isActive == true) {
                     warming?.cancel()
                     seekPreviewProvider.cancelPending()
-                } else if (safe && warming?.isActive != true && now >= nextWarmAt) {
+                } else if (safe && warming?.isActive != true && now >= nextWarmAt &&
+                    (imageOnly || !nativeSafe || !exoPlayer.isLoading)) {
                     val buffered = exoPlayer.totalBufferedDuration
                     nextWarmAt = now + if (imageOnly) 1_000L else if (buffered >= 30_000L) 2_000L else 3_000L
-                    warming = launch { seekPreviewProvider.warmPlayback(exoPlayer.currentPosition, buffered) }
+                    warming = launch { seekPreviewProvider.warmPlayback(exoPlayer.currentPosition, buffered, minimumPreviewBufferMs) }
                 }
                 delay(250L)
             }
         } finally {
             warming?.cancel()
+            guard.onPlaybackInterrupted()
             exoPlayer.removeAnalyticsListener(previewPlaybackListener)
             // A new foreground request owns cancellation while entering paused browsing.
             if (!latestSeekBrowsing) seekPreviewProvider.cancelPending()
@@ -2483,9 +2540,9 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     LaunchedEffect(uiState.selectedStreamUrl, uiState.streams) {
         val currentUrl = uiState.selectedStreamUrl ?: return@LaunchedEffect
         val selected = uiState.selectedStream
-        val idxByUrl = uiState.streams.indexOfFirst { it.url == currentUrl }
-        val idx = if (idxByUrl >= 0) {
-            idxByUrl
+        val idxByRequest = playingRequestIndex(uiState.streams, selected, currentUrl)
+        val idx = if (idxByRequest >= 0) {
+            idxByRequest
         } else {
             uiState.streams.indexOfFirst { candidate ->
                 selected != null &&
@@ -3095,14 +3152,23 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                 (exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_ENDED)
             ) {
                 placeholderCheckedSource = checkedSource
-                if (playbackVideoStatus() == PlaybackVideoStatus.PLACEHOLDER &&
+                val videoStatus = playbackVideoStatus()
+                if ("$checkedSource|$videoStatus" != placeholderLoggedCheck) {
+                    placeholderLoggedCheck = "$checkedSource|$videoStatus"
+                    sourceFailoverLog(
+                        "placeholder check ${latestUiState.selectedStream.failoverSummary()} status=$videoStatus " +
+                            "durationMs=$duration expectedDurationMs=${latestUiState.expectedDurationMs} " +
+                            "metadataPending=${latestUiState.isLoadingPlaybackMetadata} " +
+                            "manual=$userSelectedSourceManually fallbackAllowed=$allowStartupSourceFallback"
+                    )
+                }
+                if (videoStatus == PlaybackVideoStatus.PLACEHOLDER &&
                     checkedSource != placeholderHandledSource
                 ) {
                     placeholderHandledSource = checkedSource
-                    playbackStartupDiag(
-                        "placeholder video durationMs=$duration expectedDurationMs=${latestUiState.expectedDurationMs} " +
-                            "manual=$userSelectedSourceManually"
-                    )
+                    playbackRequestIdentity(latestUiState.selectedStream, latestUiState.selectedStreamUrl)?.let {
+                        placeholderRequests = placeholderRequests + it
+                    }
                     if (!userSelectedSourceManually &&
                         allowStartupSourceFallback &&
                         tryAdvanceToNextStream(reason = context.getString(R.string.player_fail_source_not_ready))
@@ -3110,6 +3176,11 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                         streamSelectedTime = System.currentTimeMillis()
                         startupRecoverAttempted = false
                         continue
+                    }
+                    // A source picked on the details screen starts before the player has the
+                    // other sources; switch once they arrive (see the effect on placeholderAwaitingSources).
+                    if (!userSelectedSourceManually && allowStartupSourceFallback && latestUiState.sourceSearchActive) {
+                        placeholderAwaitingSources = checkedSource
                     }
                     // Picked by hand, or nothing left to switch to: the clip itself says what is
                     // going on (often "downloading"), so it keeps playing with the reason on top.
@@ -7347,6 +7418,23 @@ private fun isLikelyDolbyVisionStream(stream: StreamSource?): Boolean {
 }
 
 private const val PLAYER_SCREEN_DIAGNOSTICS = true
+
+/**
+ * Why a source was skipped, or why none was left to switch to. A started source gets a
+ * "placeholder check" line each time its status changes (pending, real, placeholder); a source
+ * with no such line never reached a playable state. Warning
+ * level because R8 strips Log.i/d/v from release builds. No URLs, only their host.
+ */
+private fun sourceFailoverLog(message: String) {
+    android.util.Log.w("PlayerSourceFailover", message)
+}
+
+private fun StreamSource?.failoverSummary(): String {
+    if (this == null) return "none"
+    val host = runCatching { java.net.URI(url.orEmpty()).host }.getOrNull() ?: "-"
+    val name = source.replace(Regex("""\s+"""), " ").take(60)
+    return "[$addonId/$quality/${size.ifBlank { "-" }}/host=$host/\"$name\"]"
+}
 
 private fun playbackStartupDiag(message: String) {
     if (PLAYER_SCREEN_DIAGNOSTICS) {

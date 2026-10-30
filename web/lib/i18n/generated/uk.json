@@ -1558,5 +1558,6 @@
   "This file's audio can't play in this browser. Requesting provider conversion…": "Звук цього файлу не можна відтворити в цьому браузері. Запитуємо конвертацію в провайдера…",
   "This source's audio can't play in this browser. Choose another source or use an external player.": "Звук цього джерела не можна відтворити в цьому браузері. Виберіть інше джерело або скористайтеся зовнішнім програвачем.",
   "Converting the audio for your browser…": "Конвертуємо звук для вашого браузера…",
-  "Picking the best source…": "Вибираємо найкраще джерело…"
+  "Picking the best source…": "Вибираємо найкраще джерело…",
+  "Ko-fi charges in US dollars; your bank converts the amount automatically.": "Ko-fi списує оплату в доларах США; ваш банк автоматично конвертує суму."
 }

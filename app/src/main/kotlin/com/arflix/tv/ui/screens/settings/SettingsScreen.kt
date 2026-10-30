@@ -772,7 +772,7 @@ fun SettingsScreen(
             "catalogs" -> uiState.catalogs.size + 2 // Add + Import + Built-in collections toggle + catalogs
             "stremio" -> stremioAddons.size + 2 // rows + refresh + community + add button
             "plugins" -> pluginsMaxIndex
-            "accounts" -> 20 // Includes About & Credits and device-local usage opt-in.
+            "accounts" -> 21 // Includes About & Credits and device-local usage opt-in.
             else -> 0
         }
     }
@@ -1836,19 +1836,20 @@ fun SettingsScreen(
                                                     }
                                                 }
                                                 13 -> viewModel.forceCloudSyncNow()
-                                                14 -> {
+                                                14 -> viewModel.forceTraktSync()
+                                                15 -> {
                                                     if (uiState.updateStatus is com.arflix.tv.updater.UpdateStatus.ReadyToInstall) {
                                                         viewModel.installAppUpdateOrRequestPermission()
                                                     } else {
                                                         viewModel.checkForAppUpdates(force = true, showNoUpdateFeedback = true)
                                                     }
                                                 }
-                                                15 -> viewModel.setQuietUpdateNotifications(!uiState.quietUpdateNotifications)
-                                                16 -> viewModel.setDiagnosticsSharingEnabled(!uiState.diagnosticsSharingEnabled)
-                                                17 -> openExternalUrl(context, PRIVACY_POLICY_URL)
-                                                18 -> openExternalUrl(context, ACCOUNT_DELETION_URL)
-                                                19 -> showCredits = true
-                                                20 -> viewModel.setUsageStatisticsEnabled(!uiState.usageStatisticsEnabled)
+                                                16 -> viewModel.setQuietUpdateNotifications(!uiState.quietUpdateNotifications)
+                                                17 -> viewModel.setDiagnosticsSharingEnabled(!uiState.diagnosticsSharingEnabled)
+                                                18 -> openExternalUrl(context, PRIVACY_POLICY_URL)
+                                                19 -> openExternalUrl(context, ACCOUNT_DELETION_URL)
+                                                20 -> showCredits = true
+                                                21 -> viewModel.setUsageStatisticsEnabled(!uiState.usageStatisticsEnabled)
                                             }
                                         }
                                         "plugins" -> {
@@ -2516,6 +2517,7 @@ fun SettingsScreen(
                             onTrackingReadMode = viewModel::setTrackingReadMode,
                             onTrackingWriteTarget = viewModel::setTrackingWriteTarget,
                             onForceCloudSync = { viewModel.forceCloudSyncNow() },
+                            onForceTraktSync = { viewModel.forceTraktSync() },
                             onSwitchProfile = onSwitchProfile,
                             onCheckUpdates = { viewModel.checkForAppUpdates(force = true, showNoUpdateFeedback = true) },
                             onInstallUpdate = { viewModel.installAppUpdateOrRequestPermission() },
@@ -6335,7 +6337,8 @@ private fun MobileSettingsSubPage(
                     onReadMode = { feature, mode -> viewModel.setTrackingReadMode(feature, mode) },
                     onWriteTarget = { provider, enabled ->
                         viewModel.setTrackingWriteTarget(provider, enabled)
-                    }
+                    },
+                    onForceSync = { viewModel.forceTraktSync() }
                 )
             }
             "Privacy & Data" -> {
@@ -10725,6 +10728,7 @@ private fun AccountsSettings(
     onCancelTrakt: () -> Unit = {},
     onDisconnectTrakt: () -> Unit,
     onForceCloudSync: () -> Unit,
+    onForceTraktSync: () -> Unit = {},
     onSwitchProfile: () -> Unit,
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
@@ -10769,7 +10773,7 @@ private fun AccountsSettings(
         // Trakt.tv
         AccountRow(
             name = "Trakt.tv",
-            description = stringResource(R.string.settings_trakt_desc),
+            description = stringResource(if (trackingUiState.traktReconnectRequired) R.string.trakt_reconnect_required else R.string.settings_trakt_desc),
             isConnected = isTraktAuthenticated,
             isWorking = trackingUiState.isTraktAuthStarting || trackingUiState.isTraktPolling,
             authCode = trackingUiState.traktCode?.userCode,
@@ -10969,6 +10973,21 @@ private fun AccountsSettings(
         Spacer(modifier = Modifier.height(16.dp))
 
         SettingsActionRow(
+            title = stringResource(R.string.settings_force_trakt_sync),
+            description = if (trackingUiState.isSyncing) {
+                stringResource(R.string.settings_syncing_trakt_now)
+            } else {
+                stringResource(R.string.settings_force_trakt_sync_desc)
+            },
+            actionLabel = if (trackingUiState.isSyncing) stringResource(R.string.settings_badge_syncing) else stringResource(R.string.settings_badge_sync),
+            isFocused = focusedIndex == 14,
+            onClick = { if (!trackingUiState.isSyncing) onForceTraktSync() },
+            modifier = Modifier.settingsFocusSlot(14)
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SettingsActionRow(
             title = stringResource(R.string.app_update),
             description = when {
                 !isSelfUpdateSupported -> stringResource(R.string.settings_update_managed_play)
@@ -10985,11 +11004,11 @@ private fun AccountsSettings(
                 updateStatus is com.arflix.tv.updater.UpdateStatus.UpdateAvailable -> stringResource(R.string.settings_badge_update)
                 else -> stringResource(R.string.settings_badge_check)
             },
-            isFocused = focusedIndex == 14,
+            isFocused = focusedIndex == 15,
             onClick = {
                 if (updateStatus is com.arflix.tv.updater.UpdateStatus.ReadyToInstall) onInstallUpdate() else onCheckUpdates()
             },
-            modifier = Modifier.settingsFocusSlot(14)
+            modifier = Modifier.settingsFocusSlot(15)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -10998,9 +11017,9 @@ private fun AccountsSettings(
             title = stringResource(R.string.settings_quiet_update_notifications),
             subtitle = stringResource(R.string.settings_quiet_update_notifications_desc),
             isEnabled = quietUpdateNotifications,
-            isFocused = focusedIndex == 15,
+            isFocused = focusedIndex == 16,
             onToggle = onQuietUpdateNotificationsToggle,
-            modifier = Modifier.settingsFocusSlot(15)
+            modifier = Modifier.settingsFocusSlot(16)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -11009,9 +11028,9 @@ private fun AccountsSettings(
             title = stringResource(R.string.settings_diagnostics_sharing),
             subtitle = stringResource(R.string.settings_diagnostics_sharing_desc),
             isEnabled = diagnosticsSharingEnabled,
-            isFocused = focusedIndex == 16,
+            isFocused = focusedIndex == 17,
             onToggle = onDiagnosticsSharingToggle,
-            modifier = Modifier.settingsFocusSlot(16)
+            modifier = Modifier.settingsFocusSlot(17)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -11020,9 +11039,9 @@ private fun AccountsSettings(
             title = stringResource(R.string.settings_privacy_policy),
             description = stringResource(R.string.settings_privacy_policy_desc),
             actionLabel = stringResource(R.string.settings_badge_open),
-            isFocused = focusedIndex == 17,
+            isFocused = focusedIndex == 18,
             onClick = onOpenPrivacy,
-            modifier = Modifier.settingsFocusSlot(17)
+            modifier = Modifier.settingsFocusSlot(18)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -11031,27 +11050,27 @@ private fun AccountsSettings(
             title = stringResource(R.string.settings_account_data_deletion),
             description = stringResource(R.string.settings_account_data_deletion_desc),
             actionLabel = stringResource(R.string.settings_badge_open),
-            isFocused = focusedIndex == 18,
+            isFocused = focusedIndex == 19,
             onClick = onOpenDataDeletion,
-            modifier = Modifier.settingsFocusSlot(18)
+            modifier = Modifier.settingsFocusSlot(19)
         )
         Spacer(modifier = Modifier.height(16.dp))
         SettingsActionRow(
             title = stringResource(R.string.about_credits),
             description = stringResource(R.string.about_credits_description),
             actionLabel = stringResource(R.string.settings_badge_open),
-            isFocused = focusedIndex == 19,
+            isFocused = focusedIndex == 20,
             onClick = onOpenCredits,
-            modifier = Modifier.settingsFocusSlot(19)
+            modifier = Modifier.settingsFocusSlot(20)
         )
         Spacer(modifier = Modifier.height(16.dp))
         SettingsToggleRow(
             title = stringResource(R.string.settings_usage_statistics),
             subtitle = stringResource(R.string.settings_usage_statistics_desc),
             isEnabled = usageStatisticsEnabled,
-            isFocused = focusedIndex == 20,
+            isFocused = focusedIndex == 21,
             onToggle = onUsageStatisticsToggle,
-            modifier = Modifier.settingsFocusSlot(20)
+            modifier = Modifier.settingsFocusSlot(21)
         )
     }
 }
@@ -11284,7 +11303,8 @@ private fun TrackingIntegrationsPage(
         com.arflix.tv.data.repository.sync.TrackingFeature,
         com.arflix.tv.data.repository.sync.TrackingReadMode
     ) -> Unit = { _, _ -> },
-    onWriteTarget: (com.arflix.tv.data.repository.sync.SyncProvider, Boolean) -> Unit = { _, _ -> }
+    onWriteTarget: (com.arflix.tv.data.repository.sync.SyncProvider, Boolean) -> Unit = { _, _ -> },
+    onForceSync: () -> Unit = {}
 ) {
     var showMdbListDisconnectConfirm by remember { mutableStateOf(false) }
     var showTraktDisconnectConfirm by remember { mutableStateOf(false) }
@@ -11371,13 +11391,29 @@ private fun TrackingIntegrationsPage(
             }
         }
 
+        MobileSettingsCategory(title = stringResource(R.string.settings_section_actions)) {
+            MobileSettingsRow(
+                icon = Icons.Default.Sync,
+                title = stringResource(R.string.settings_force_trakt_sync),
+                subtitle = if (uiState.isSyncing) {
+                    stringResource(R.string.settings_syncing_trakt_now)
+                } else {
+                    stringResource(R.string.settings_force_trakt_sync_desc)
+                },
+                value = if (uiState.isSyncing) stringResource(R.string.settings_badge_syncing) else stringResource(R.string.settings_badge_sync),
+                isFocused = false,
+                showDivider = false,
+                onClick = { if (!uiState.isSyncing) onForceSync() }
+            )
+        }
+
         // Section 2: SERVICES
         MobileSettingsCategory(title = stringResource(R.string.settings_tracking_section_services)) {
             // Trakt
             TrackingServiceRow(
                 iconRes = R.drawable.ic_trakt,
                 title = "Trakt",
-                tagline = stringResource(R.string.settings_trakt_tagline),
+                tagline = stringResource(if (uiState.traktReconnectRequired) R.string.trakt_reconnect_required else R.string.settings_trakt_tagline),
                 isConnected = uiState.isTraktAuthenticated,
                 isWorking = uiState.isTraktPolling || uiState.isTraktAuthStarting,
                 connectedAs = uiState.traktUsername,
