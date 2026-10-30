@@ -1190,13 +1190,8 @@ fun ArvioMobilePlayer(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-<<<<<<< HEAD
                                 text = stringResource(R.string.mplayer_reload_streams),
-                                color = Color(0xFF0B0C10),
-=======
-                                text = "Reload Streams",
                                 color = Color.Black,
->>>>>>> 639b4cd1f (Unify background to pure black; tokenize player overlays and spotlight)
                                 fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold
                             )

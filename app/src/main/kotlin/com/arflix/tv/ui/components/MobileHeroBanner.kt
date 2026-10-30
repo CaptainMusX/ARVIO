@@ -35,6 +35,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arflix.tv.R
+import com.arflix.tv.ui.skin.ArvioSkin
 import com.arflix.tv.ui.theme.BackgroundCard
 import com.arflix.tv.ui.theme.BorderLight
 import coil.compose.AsyncImage
@@ -234,7 +235,7 @@ private fun BannerMeta(year: String, rating: String) {
         if (hasYear) {
             Text(
                 text = year,
-                color = ArvioSkin.colors.textSecondary,
+                color = ArvioSkin.colors.textMuted,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -265,7 +266,7 @@ private fun BannerGenres(genres: List<String>, compact: Boolean) {
     if (genres.isEmpty()) return
     Text(
         text = genres.joinToString(" · "),
-        color = ArvioSkin.colors.textSecondary,
+        color = ArvioSkin.colors.textMuted,
         fontSize = 12.sp,
         fontWeight = FontWeight.Normal,
         textAlign = TextAlign.Center,

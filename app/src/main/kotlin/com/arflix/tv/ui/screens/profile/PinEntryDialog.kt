@@ -57,6 +57,7 @@ import androidx.tv.material3.Text
 import com.arflix.tv.R
 import com.arflix.tv.ui.theme.BackgroundElevated
 import com.arflix.tv.ui.theme.ErrorRed
+import com.arflix.tv.ui.theme.TextSecondary
 import com.arflix.tv.util.LocalDeviceType
 import com.arflix.tv.util.PinUtil
 import kotlinx.coroutines.delay

@@ -128,6 +128,7 @@ import com.arflix.tv.ui.components.topBarFocusedItem
 import com.arflix.tv.ui.components.topBarMaxIndex
 import com.arflix.tv.ui.focus.arvioDpadFocusGroup
 import com.arflix.tv.ui.theme.AccentGreen
+import com.arflix.tv.ui.theme.ImdbYellow
 import com.arflix.tv.ui.theme.ArflixTypography
 import com.arflix.tv.ui.theme.BackgroundCard
 import com.arflix.tv.ui.theme.appBackgroundDark
@@ -1595,7 +1596,7 @@ private fun GroupRailItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isFavorite) {
-            Icon(Icons.Default.Star, null, tint = Color(0xFFF5C518).copy(alpha = 0.8f), modifier = Modifier.size(10.dp))
+            Icon(Icons.Default.Star, null, tint = ImdbYellow.copy(alpha = 0.8f), modifier = Modifier.size(10.dp))
             Spacer(modifier = Modifier.width(5.dp))
         }
         Text(name, style = ArflixTypography.caption.copy(fontSize = 11.sp, fontWeight = if (isFocused) FontWeight.Medium else FontWeight.Normal, lineHeight = 14.sp),
@@ -1619,7 +1620,7 @@ private fun GroupRailItem(
                     }
                 }
         ) {
-            FocusableMenuItem(if (isFavorite) "Unfavorite" else "Favorite", if (isFavorite) Icons.Default.StarOutline else Icons.Default.Star, Color(0xFFF5C518)) { onDismissMenu(); onToggleFavorite() }
+            FocusableMenuItem(if (isFavorite) "Unfavorite" else "Favorite", if (isFavorite) Icons.Default.StarOutline else Icons.Default.Star, ImdbYellow) { onDismissMenu(); onToggleFavorite() }
             FocusableMenuItem("Hide", Icons.Default.VisibilityOff) { onDismissMenu(); onToggleHidden() }
             FocusableMenuItem("Move to Top", Icons.Default.KeyboardArrowUp) { onDismissMenu(); onMoveToTop() }
             FocusableMenuItem("Move Up", Icons.Default.KeyboardArrowUp) { onDismissMenu(); onMoveUp() }
@@ -2057,7 +2058,7 @@ private fun GuideChannelRow(
                     Icon(
                         imageVector = Icons.Default.Star,
                         contentDescription = null,
-                        tint = Color(0xFFF5C518).copy(alpha = 0.9f),
+                        tint = ImdbYellow.copy(alpha = 0.9f),
                         modifier = Modifier
                             .size(10.dp)
                             .align(Alignment.TopEnd)

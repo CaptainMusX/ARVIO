@@ -254,6 +254,7 @@ import com.arflix.tv.ui.focus.arvioDpadFocusGroup
 import com.arflix.tv.ui.focus.isArvioDpadNavigationKey
 import com.arflix.tv.ui.focus.rememberArvioDpadRepeatGate
 import com.arflix.tv.ui.skin.resolveAccentColor
+import com.arflix.tv.ui.theme.AccentGreen
 import com.arflix.tv.ui.theme.ArflixTypography
 import com.arflix.tv.ui.theme.appBackgroundDark
 import com.arflix.tv.ui.theme.BackgroundElevated
@@ -4581,7 +4582,7 @@ internal fun TraktActivationModal(
                                 .size(48.dp)
                                 .background(
                                     if (isConnected) {
-                                        Color(0xFF4CAF50) // Green checkmark
+                                        AccentGreen // Green checkmark
                                     } else {
                                         Color.White.copy(alpha = 0.08f)
                                     },
