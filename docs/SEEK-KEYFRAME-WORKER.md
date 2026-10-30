@@ -6,8 +6,11 @@ bounded loopback range proxy. It never seeks the main player, opens an audio
 device, or reserves a hardware video decoder. Only small bitmaps and their
 actual presentation timestamps cross Binder.
 
-One low-priority extraction job uses at most two software slice threads to decode
-an independent keyframe. Full-resolution deblocking is skipped for the 320px
+During playback, one low-priority extraction job uses at most two software slice
+threads to decode an independent keyframe. While the player is paused for preview
+browsing, the worker uses normal priority and up to four slice threads. Switching
+modes recreates only the decoder; the demuxer/index and range cache are retained.
+There is still only one preview decoder. Full-resolution deblocking is skipped for the 320px
 thumbnail; the main playback decoder is unchanged. A
 frame farther than five seconds from the requested timestamp is rejected.
 Cancellation interrupts network reads; source replacement invalidates cached
@@ -383,3 +386,61 @@ Raw local evidence: `artifacts/preview-adaptive-{sheet,playback,cold}.json`,
 `artifacts/preview-adaptive-device-tests.txt`,
 `artifacts/preview-adaptive-rebased-build.log`, and
 `artifacts/preview-adaptive-five.png` (actual five-card emulator rendering).
+
+### Cache contention and paused decoding (30 October 2026)
+
+Disk reads no longer share the writer's monitor. Cache entries are immutable
+files published by same-directory rename, so a read can return independently of
+JPEG compression and eviction. A concurrent eviction is treated as a miss, and
+read failures never delete a pathname that a writer may already have replaced.
+The writer retains a bounded five-entry queue instead of conflating every burst
+to one entry; this preserves a complete strip without blocking delivery. Removing
+the monitor exposed lost writes in the existing strip-restoration regression
+test, which the bounded queue fixes.
+
+The paused decoder mode described above retains the existing network budgets and
+single-worker ownership. Playback-time preparation remains at nice 19 with two
+slice threads; paused browsing uses nice 0 and up to four. The device test checks
+that a switch into paused mode retains the demuxer rather than reopening it.
+
+After rebasing onto main `7235b1525`, all 138 selected JVM tests passed (124 preview
+tests and 14 voice-search tests), followed by all nine selected Android TV emulator
+tests. Controlled playback recorded zero dropped frames, rebuffers and errors,
+successful resume, and five prepared thumbnails with a 1-ms window lookup. This
+still uses 1080p playback plus a separate 4K preview fixture. Controlled cold-center
+times were 874 / 760 / 732 ms, so these changes do not establish sub-500-ms uncached
+extraction. The image-sheet fixture prepared five cues in 356 ms and restored the
+window in 2.34 ms. Evidence: `artifacts/preview-priority-{cold,playback,sheet}.json`
+and `artifacts/preview-priority-device-tests.txt`.
+
+Physical-TV verification used a normal, non-debuggable, release-signed ARM APK
+from `f6ffdb2cc` on a TCL Smart TV Pro (Android 14, ARMv7, 192-MiB app heap).
+The installed APK SHA-256 matched
+`31aed5059eb7a3475d5ed9862be52849daca35fea0c640f129d31c861f9d9555`.
+Source: Dune (2021), 86.41-GB 2160p HEVC/Dolby Vision P8 remux, TorBox through
+Torrentio. Fresh +5/+10/+20-minute jumps produced center UI updates in
+2,984 / 1,197 / 965 ms. The first request included worker/source startup.
+Baseline samples on the same file at different positions were
+2,894 / 1,605 / 1,758 ms; this is a small, scene-dependent comparison, not a
+controlled percentage speedup claim.
+
+The measured gaps between completed worker jobs and the next job starting fell
+from 758–1,302 ms to 6–50 ms. This removes the storage contention rather than
+counting a wrong-timestamp image as ready. Eighteen cached input-to-display
+updates were 11–60 ms, and an actual TV screenshot confirms two real images on
+each side of the center. Cold full strips still took several seconds; no
+sub-500-ms uncached guarantee is established. The third jump returned five native
+frames, although only four provider completion messages preceded auto-commit;
+the log report deliberately retains that distinction.
+
+Six final frame-presentation samples spread across roughly 49 seconds showed
+23.98–24.01 fps, advancing timestamps, maximum individual gaps of 50.07–66.64 ms,
+and no gaps over 100 ms within those samples. The full test logged dropped-frame
+batches of 7, 5, 1 and 1 over separate playback intervals, so this is not a claim
+of zero dropped frames or uninterrupted measurement of every frame. Playback
+resumed after each jump; the app process survived and was left on details with
+playback stopped. Evidence: `artifacts/tv-priority-timing.log`,
+`artifacts/tv-priority-measured-report.json`,
+`artifacts/tv-priority-final-steady-*.txt`,
+`artifacts/tv-priority-cached-bright.png` and
+`artifacts/preview-priority-release-verification.json`.
