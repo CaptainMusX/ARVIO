@@ -307,23 +307,6 @@ private const val SEEK_PREVIEW_DEBOUNCE_MS = 60L
 private const val MAX_SUBTITLE_OFFSET_MS = 120_000L
 private const val SUBTITLE_OFFSET_STEP_MS = 100L
 
-private fun isSafePlaybackHeader(name: String, value: String): Boolean {
-    return name.isNotBlank() &&
-        value.isNotBlank() &&
-        name.all { ch ->
-            ch.code in 33..126 &&
-                ch !in setOf('(', ')', '<', '>', '@', ',', ';', ':', '\\', '"', '/', '[', ']', '?', '=', '{', '}')
-        } &&
-        value.all { ch -> ch == '\t' || ch.code in 32..126 }
-}
-
-private fun Map<String, String>.safePlaybackHeaders(): Map<String, String> {
-    if (isEmpty()) return emptyMap()
-    return filter { (name, value) -> isSafePlaybackHeader(name.trim(), value.trim()) }
-        .mapKeys { (name, _) -> name.trim() }
-        .mapValues { (_, value) -> value.trim() }
-}
-
 /**
  * Resolves a [PlayerMessage] against the app language. Nested messages (e.g. the reference-source
  * label inside a match status) are resolved first so they are localized too.
@@ -516,9 +499,8 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     var placeholderLoggedCheck by remember { mutableStateOf<String?>(null) }
     // The placeholder source still waiting for the source search to find something to switch to.
     var placeholderAwaitingSources by remember { mutableStateOf<String?>(null) }
-    // URLs that turned out to be placeholders. The source list can hold the same clip twice (the
-    // addon's entry and the resolved link), so failover must not land on another copy of it.
-    var placeholderUrls by remember { mutableStateOf(emptySet<String>()) }
+    // Provider labels can differ for the same request; different access headers remain eligible.
+    var placeholderRequests by remember { mutableStateOf(emptySet<PlaybackRequestIdentity>()) }
     var loadedSource by remember { mutableStateOf<String?>(null) }
     var currentSourceIsLive by remember { mutableStateOf(args.isLiveStream) }
     var confirmedSource by remember { mutableStateOf<String?>(null) }
@@ -969,6 +951,10 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         longRebufferCount = 0
         autoAdvanceAttempts = 0
         triedStreamIndexes = emptySet()
+        placeholderRequests = emptySet()
+        placeholderAwaitingSources = null
+        placeholderHandledSource = null
+        placeholderLoggedCheck = null
         isAutoAdvancing = false
         userSelectedSourceManually = false
         readyPlayingSinceMs = null
@@ -1013,8 +999,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     candidate.url?.isNotBlank() == true &&
                         viewModel.isEligibleForAutomaticPlayback(candidate) &&
                         idx !in triedStreamIndexes &&
-                        candidate.url != uiState.selectedStreamUrl &&
-                        candidate.url !in placeholderUrls &&
+                        canTryFailoverSource(candidate, uiState.selectedStream, uiState.selectedStreamUrl, placeholderRequests) &&
                         (skipAddonId.isNullOrBlank() || candidate.addonId != skipAddonId) &&
                         !viewModel.isPlaybackHostTemporarilyBad(candidate)
                 } ?: -1
@@ -1078,7 +1063,8 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
 
     // A placeholder found while the source search was still running: try the next source each
     // time more sources arrive, and stop once the search is over or another source is playing.
-    LaunchedEffect(placeholderAwaitingSources, uiState.streams, uiState.sourceSearchActive) {
+    LaunchedEffect(placeholderAwaitingSources, uiState.streams, uiState.sourceSearchActive,
+        uiState.streamSelectionNonce, userSelectedSourceManually) {
         val waitingSource = placeholderAwaitingSources ?: return@LaunchedEffect
         // Let the index sync below place the playing source in the new list first; otherwise the
         // search starts from the old one-entry list's index and skips the new list's first source.
@@ -3170,7 +3156,9 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     checkedSource != placeholderHandledSource
                 ) {
                     placeholderHandledSource = checkedSource
-                    latestUiState.selectedStreamUrl?.let { placeholderUrls = placeholderUrls + it }
+                    playbackRequestIdentity(latestUiState.selectedStream, latestUiState.selectedStreamUrl)?.let {
+                        placeholderRequests = placeholderRequests + it
+                    }
                     if (!userSelectedSourceManually &&
                         allowStartupSourceFallback &&
                         tryAdvanceToNextStream(reason = context.getString(R.string.player_fail_source_not_ready))
