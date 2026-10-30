@@ -514,6 +514,11 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     var placeholderHandledSource by remember { mutableStateOf<String?>(null) }
     // The source and placeholder status last written to the failover log, so each change logs once.
     var placeholderLoggedCheck by remember { mutableStateOf<String?>(null) }
+    // The placeholder source still waiting for the source search to find something to switch to.
+    var placeholderAwaitingSources by remember { mutableStateOf<String?>(null) }
+    // URLs that turned out to be placeholders. The source list can hold the same clip twice (the
+    // addon's entry and the resolved link), so failover must not land on another copy of it.
+    var placeholderUrls by remember { mutableStateOf(emptySet<String>()) }
     var loadedSource by remember { mutableStateOf<String?>(null) }
     var currentSourceIsLive by remember { mutableStateOf(args.isLiveStream) }
     var confirmedSource by remember { mutableStateOf<String?>(null) }
@@ -994,6 +999,10 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     ): Boolean {
         val streams = uiState.streams
         return if (streams.size <= 1) {
+            sourceFailoverLog(
+                "no next source after ${uiState.selectedStream.failoverSummary()} reason=$reason " +
+                    "sources=${streams.size} searching=${uiState.sourceSearchActive}"
+            )
             viewModel.onFailoverAttempt(success = false)
             false
         } else {
@@ -1004,6 +1013,8 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     candidate.url?.isNotBlank() == true &&
                         viewModel.isEligibleForAutomaticPlayback(candidate) &&
                         idx !in triedStreamIndexes &&
+                        candidate.url != uiState.selectedStreamUrl &&
+                        candidate.url !in placeholderUrls &&
                         (skipAddonId.isNullOrBlank() || candidate.addonId != skipAddonId) &&
                         !viewModel.isPlaybackHostTemporarilyBad(candidate)
                 } ?: -1
@@ -1062,6 +1073,30 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                 viewModel.selectStream(streams[nextIndex])
                 true
             }
+        }
+    }
+
+    // A placeholder found while the source search was still running: try the next source each
+    // time more sources arrive, and stop once the search is over or another source is playing.
+    LaunchedEffect(placeholderAwaitingSources, uiState.streams, uiState.sourceSearchActive) {
+        val waitingSource = placeholderAwaitingSources ?: return@LaunchedEffect
+        // Let the index sync below place the playing source in the new list first; otherwise the
+        // search starts from the old one-entry list's index and skips the new list's first source.
+        kotlinx.coroutines.yield()
+        if (waitingSource != selectedSourceKey() || userSelectedSourceManually) {
+            placeholderAwaitingSources = null
+            return@LaunchedEffect
+        }
+        if (tryAdvanceToNextStream(
+                recordCurrentFailure = false,
+                reason = context.getString(R.string.player_fail_source_not_ready)
+            )
+        ) {
+            placeholderAwaitingSources = null
+            streamSelectedTime = System.currentTimeMillis()
+            startupRecoverAttempted = false
+        } else if (!uiState.sourceSearchActive) {
+            placeholderAwaitingSources = null
         }
     }
 
@@ -3125,6 +3160,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     checkedSource != placeholderHandledSource
                 ) {
                     placeholderHandledSource = checkedSource
+                    latestUiState.selectedStreamUrl?.let { placeholderUrls = placeholderUrls + it }
                     if (!userSelectedSourceManually &&
                         allowStartupSourceFallback &&
                         tryAdvanceToNextStream(reason = context.getString(R.string.player_fail_source_not_ready))
@@ -3132,6 +3168,11 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                         streamSelectedTime = System.currentTimeMillis()
                         startupRecoverAttempted = false
                         continue
+                    }
+                    // A source picked on the details screen starts before the player has the
+                    // other sources; switch once they arrive (see the effect on placeholderAwaitingSources).
+                    if (!userSelectedSourceManually && allowStartupSourceFallback && latestUiState.sourceSearchActive) {
+                        placeholderAwaitingSources = checkedSource
                     }
                     // Picked by hand, or nothing left to switch to: the clip itself says what is
                     // going on (often "downloading"), so it keeps playing with the reason on top.
