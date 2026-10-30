@@ -1,3 +1,4 @@
+import { repairIptvPlaylistIds } from "./iptvPlaylistIdentity";
 import type { AuthClient } from "./auth";
 import { mergeAddonChanges, recordAddonChanges, type AddonChanges } from "./addonChanges";
 import { mergeWatchlistChanges, mergeWatchlistItems, watchlistChangesStorageKey, watchlistKey, type CloudWatchlistItem as AndroidWatchlistItem, type WatchlistChanges } from "./watchlistChanges";
@@ -269,11 +270,11 @@ export function normalizeChannelOrder(value: unknown): Record<string, string[]> 
 
 function normalizeIptvPlaylists(value: unknown, fallbackPrefix: string): IptvPlaylistEntry[] {
   const values = arrayValue(value);
-  return values.length
+  return repairIptvPlaylistIds(values.length
     ? values
         .map((playlist, index) => normalizeIptvPlaylist(playlist, `${fallbackPrefix}-${index + 1}`))
         .filter((playlist): playlist is IptvPlaylistEntry => Boolean(playlist))
-    : [];
+    : []);
 }
 
 function dedupeIptvPlaylists(playlists: IptvPlaylistEntry[]) {

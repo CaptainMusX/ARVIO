@@ -34,6 +34,16 @@ class MobileIptvReorderDeviceTest {
     private val playlistDeletes = mutableListOf<Set<String>>()
     private val portalDeletes = mutableListOf<Set<String>>()
 
+    @Test fun tenPlaylistsRemainReachableAndTheLastCanBeSelected() {
+        playlists.value = (1..10).map { IptvPlaylistEntry("list_$it", "Playlist $it", "https://example.invalid/$it.m3u") }
+        portals.value = emptyList()
+        fixture()
+        for (n in 1..10) compose.onNodeWithText("Playlist $n").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Playlist 10").performTouchInput { longClick() }
+        deleteSelected()
+        assertEquals(listOf(setOf("list_10")), playlistDeletes)
+    }
+
     @Test fun selectedPlaylistKeepsItsIdAfterTheReorderSaveReturns() {
         fixture()
         compose.onNodeWithText("Playlist b").performScrollTo().performTouchInput { longClick() }

@@ -646,7 +646,7 @@
     <string name="settings_reload_playlist_epg_now">Playlist und EPG jetzt neu laden</string>
     <string name="settings_no_playlists_configured">Keine Playlists eingerichtet</string>
     <string name="settings_remove_playlists_epg">Playlists, EPG und Favoriten entfernen</string>
-    <string name="settings_add_iptv_lists_hint">Bis zu 3 M3U-/Xtream-IPTV-Listen mit Namen hinzufügen</string>
+    <string name="settings_add_iptv_lists_hint">Bis zu 10 M3U-/Xtream-IPTV-Listen mit Namen hinzufügen</string>
     <string name="settings_create_another_iptv">Weitere IPTV-Liste erstellen</string>
     <string name="settings_badge_full">VOLL</string>
     <string name="settings_badge_add">HINZUFÜGEN</string>
@@ -659,7 +659,7 @@
     <string name="settings_section_options">OPTIONEN</string>
     <string name="settings_epg_vod_actions">Streaming-Optionen des TV-Guides</string>
     <string name="settings_epg_vod_actions_desc">Bei einem zweiten Klick "Jetzt streamen" für übereinstimmende Filme und Serien anbieten; andernfalls Live-TV-Vollbild öffnen</string>
-    <string name="settings_add_tv_lists_hint">Bis zu 3 M3U-/Xtream-TV-Listen hinzufügen</string>
+    <string name="settings_add_tv_lists_hint">Bis zu 10 M3U-/Xtream-TV-Listen hinzufügen</string>
     <string name="settings_create_another_tv">Weitere TV-Liste erstellen</string>
     <string name="settings_badge_full_short">Voll</string>
     <string name="settings_search_lists">Listen suchen</string>
@@ -964,12 +964,12 @@
     <string name="iptv_account_refreshing">Wird abgefragt…</string>
     <string name="iptv_account_refresh_failed">Der Anbieter hat nicht geantwortet. Bitte in einer Minute noch einmal versuchen.</string>
     <string name="settings_section_stalker_portals">STALKER-PORTALE</string>
-    <string name="settings_stalker_add_hint">Bis zu 3 Stalker-/Ministra-Portale hinzufügen</string>
+    <string name="settings_stalker_add_hint">Bis zu 10 Stalker-/Ministra-Portale hinzufügen</string>
     <string name="settings_stalker_create_another">Weiteres Stalker-Portal hinzufügen</string>
     <string name="settings_stalker_portal_name_label">Portalname</string>
     <string name="settings_stalker_portal_name_placeholder">z.B. Portal 1</string>
     <string name="settings_stalker_rename_title">Portal umbenennen</string>
-    <string name="settings_stalker_max_reached">Maximal 3 Stalker-Portale erreicht</string>
+    <string name="settings_stalker_max_reached">Maximal 10 Stalker-Portale erreicht</string>
     <string name="live_badge_live">LIVE</string>
     <string name="live_badge_now">JETZT</string>
     <string name="live_badge_next">ALS NÄCHSTES</string>

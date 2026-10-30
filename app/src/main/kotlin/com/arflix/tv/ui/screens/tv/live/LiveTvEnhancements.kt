@@ -163,10 +163,10 @@ fun buildTvProviderFilters(
     playlistGroupCounts: List<Triple<String, String, Int>> = emptyList(),
 ): List<TvProviderFilter> {
     val enabledPlaylists = config.playlists
-        .filter { it.enabled && it.id.isNotBlank() }
+        .filter { it.enabled && it.importLiveTv != false && it.id.isNotBlank() }
         .distinctBy { it.id }
     val enabledPortals = config.stalkerPortals
-        .filter { it.enabled && it.id.isNotBlank() }
+        .filter { it.enabled && it.importLiveTv != false && it.id.isNotBlank() }
         .distinctBy { it.id }
     val totalSources = enabledPlaylists.size + enabledPortals.size
     if (totalSources <= 1) return emptyList()
@@ -179,27 +179,23 @@ fun buildTvProviderFilters(
         }
         .groupingBy { (playlistId, _, _) -> playlistId.removePrefix("source:") }
         .fold(0) { total, (_, _, count) -> total + count }
-    val counts = pagedCounts.ifEmpty {
+    val loadedCounts =
         channels
             .mapNotNull { channelPlaylistId(it, knownIds) }
             .groupingBy { it.removePrefix("source:") }
             .eachCount()
-    }
-    if (counts.size <= 1) return emptyList()
+    // Partial page counts must not suppress another source already present in memory.
+    val counts = loadedCounts + pagedCounts
 
     return buildList {
         add(TvProviderFilter("all", "All providers", counts.values.sum()))
         enabledPlaylists.forEach { playlist ->
             val count = counts[playlist.id] ?: 0
-            if (count > 0) {
-                add(TvProviderFilter(playlist.id, playlist.name.ifBlank { playlist.id }, count))
-            }
+            add(TvProviderFilter(playlist.id, playlist.name.ifBlank { playlist.id }, count))
         }
         enabledPortals.forEach { portal ->
             val count = counts[portal.id] ?: counts["source:${portal.id}"] ?: 0
-            if (count > 0) {
-                add(TvProviderFilter(portal.id, portal.name.ifBlank { portal.id }, count))
-            }
+            add(TvProviderFilter(portal.id, portal.name.ifBlank { portal.id }, count))
         }
     }
 }

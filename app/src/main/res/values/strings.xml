@@ -710,7 +710,7 @@
     <string name="settings_reload_playlist_epg_now">Reload playlist and EPG now</string>
     <string name="settings_no_playlists_configured">No playlists configured</string>
     <string name="settings_remove_playlists_epg">Remove playlists, EPG and favorites</string>
-    <string name="settings_add_iptv_lists_hint">Add up to 5 M3U / Xtream IPTV lists with names</string>
+    <string name="settings_add_iptv_lists_hint">Add up to 10 M3U / Xtream IPTV lists with names</string>
     <string name="settings_create_another_iptv">Create another IPTV list</string>
     <string name="settings_badge_full">FULL</string>
     <string name="settings_badge_add">ADD</string>
@@ -749,7 +749,7 @@
     <string name="settings_iptv_order_provider">Provider order</string>
     <string name="settings_iptv_order_number">Channel number</string>
     <string name="settings_iptv_order_name">Alphabetical (A-Z)</string>
-    <string name="settings_add_tv_lists_hint">Add up to 5 M3U / Xtream TV lists</string>
+    <string name="settings_add_tv_lists_hint">Add up to 10 M3U / Xtream TV lists</string>
     <string name="settings_create_another_tv">Create another TV list</string>
     <string name="settings_badge_full_short">Full</string>
     <string name="settings_search_lists">Search Lists</string>
@@ -935,7 +935,7 @@
     <string name="settings_cd_edit_stalker_config">Edit Stalker portal</string>
     <string name="settings_section_stalker_portals">STALKER PORTALS</string>
     <string name="settings_add_stalker_portal_button">Add Stalker portal</string>
-    <string name="settings_stalker_add_hint">Add up to 3 Stalker / Ministra portals</string>
+    <string name="settings_stalker_add_hint">Add up to 10 Stalker / Ministra portals</string>
     <string name="settings_stalker_create_another">Add another Stalker portal</string>
     <string name="settings_stalker_portal_name_label">Portal name</string>
     <string name="settings_stalker_portal_name_placeholder">e.g. Portal 1</string>
@@ -944,7 +944,7 @@
     <string name="settings_cd_move_stalker_down">Move Stalker portal down</string>
     <string name="settings_cd_remove_stalker_portal">Remove Stalker portal</string>
     <string name="settings_stalker_rename_title">Rename portal</string>
-    <string name="settings_stalker_max_reached">Maximum of 3 Stalker portals reached</string>
+    <string name="settings_stalker_max_reached">Maximum of 10 Stalker portals reached</string>
     <string name="settings_ua_default">Default</string>
     <string name="settings_enter_field">Enter %1$s...</string>
     <string name="settings_clock_12h">12-hour</string>
@@ -2053,5 +2053,6 @@
     <string name="settings_wetrakr_update">Update WeTrakr while watching</string>
     <string name="settings_connect_wetrakr">Connect WeTrakr</string>
     <string name="settings_wetrakr_copy_open">Copy code and open WeTrakr</string>
+    <string name="settings_iptv_max_reached">Maximum of 10 IPTV playlists reached</string>
 </resources>
 

@@ -3636,6 +3636,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun saveIptvPlaylists(playlists: List<IptvPlaylistEntry>) {
+        if (playlists.count { it.m3uUrl.isNotBlank() } > com.arflix.tv.data.repository.MAX_IPTV_PLAYLISTS) {
+            _uiState.value = _uiState.value.copy(toastMessage = SettingsMessage.Res(R.string.settings_iptv_max_reached), toastType = ToastType.ERROR)
+            return
+        }
         val previous = _uiState.value.iptvPlaylists
         viewModelScope.launch {
             iptvRepository.savePlaylists(playlists)
@@ -3648,7 +3652,7 @@ class SettingsViewModel @Inject constructor(
                 portals = stored.stalkerPortals,
             )
             _uiState.value = _uiState.value.copy(
-                iptvPlaylists = playlists.filter { it.m3uUrl.isNotBlank() }
+                iptvPlaylists = stored.playlists
             )
             syncLocalStateToCloud(silent = true)
             refreshIptv(showToast = true, configured = true, force = true)

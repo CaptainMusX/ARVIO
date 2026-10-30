@@ -2754,7 +2754,7 @@ fun SettingsScreen(
                         val finalEpgUrls = splitSettingsEpgInput(finalEpgUrl)
                         val updated = uiState.iptvPlaylists.toMutableList()
                         val entry = com.arflix.tv.data.repository.IptvPlaylistEntry(
-                            id = editingPlaylist?.id ?: "list_${updated.size + 1}",
+                            id = editingPlaylist?.id ?: "list_${java.util.UUID.randomUUID()}",
                             name = name.trim(),
                             m3uUrl = finalM3uUrl,
                             epgUrl = finalEpgUrls.firstOrNull().orEmpty(),

@@ -624,7 +624,7 @@
     <string name="settings_reload_playlist_epg_now">Recargar lista y EPG ahora</string>
     <string name="settings_no_playlists_configured">No hay listas configuradas</string>
     <string name="settings_remove_playlists_epg">Eliminar listas, EPG y favoritos</string>
-    <string name="settings_add_iptv_lists_hint">Añade hasta 3 listas M3U / Xtream IPTV con nombres</string>
+    <string name="settings_add_iptv_lists_hint">Añade hasta 10 listas M3U / Xtream IPTV con nombres</string>
     <string name="settings_create_another_iptv">Crear otra lista IPTV</string>
     <string name="settings_badge_full">COMPLETA</string>
     <string name="settings_badge_add">AÑADIR</string>
@@ -663,7 +663,7 @@
     <string name="settings_iptv_order_provider">Orden del proveedor</string>
     <string name="settings_iptv_order_number">Número de canal</string>
     <string name="settings_iptv_order_name">Alfabético (A-Z)</string>
-    <string name="settings_add_tv_lists_hint">Añade hasta 3 listas de TV M3U / Xtream</string>
+    <string name="settings_add_tv_lists_hint">Añade hasta 10 listas de TV M3U / Xtream</string>
     <string name="settings_create_another_tv">Crear otra lista de TV</string>
     <string name="settings_badge_full_short">COMPLETA</string>
     <string name="settings_search_lists">Buscar listas</string>
@@ -817,7 +817,7 @@
     <string name="settings_cd_edit_stalker_config">Editar portal Stalker</string>
     <string name="settings_section_stalker_portals">PORTALES STALKER</string>
     <string name="settings_add_stalker_portal_button">Añadir portal Stalker</string>
-    <string name="settings_stalker_add_hint">Añade hasta 3 portales Stalker / Ministra</string>
+    <string name="settings_stalker_add_hint">Añade hasta 10 portales Stalker / Ministra</string>
     <string name="settings_stalker_create_another">Añadir otro portal Stalker</string>
     <string name="settings_stalker_portal_name_label">Nombre del portal</string>
     <string name="settings_stalker_portal_name_placeholder">ej. Portal 1</string>
@@ -826,7 +826,7 @@
     <string name="settings_cd_move_stalker_down">Bajar portal Stalker</string>
     <string name="settings_cd_remove_stalker_portal">Eliminar portal Stalker</string>
     <string name="settings_stalker_rename_title">Renombrar portal</string>
-    <string name="settings_stalker_max_reached">Número máximo de 3 portales Stalker alcanzado</string>
+    <string name="settings_stalker_max_reached">Número máximo de 10 portales Stalker alcanzado</string>
     <string name="settings_ua_default">Por defecto</string>
     <string name="settings_enter_field">Introduce %1$s...</string>
     <string name="settings_clock_12h">12 horas</string>
