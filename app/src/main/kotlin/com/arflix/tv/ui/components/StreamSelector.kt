@@ -97,6 +97,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -290,6 +292,7 @@ fun StreamSelector(
 ) {
     val isMobile = LocalDeviceType.current.isTouchDevice()
     val isRtlLayoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    val haptic = LocalHapticFeedback.current
 
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
@@ -958,7 +961,10 @@ fun StreamSelector(
                                     presentation = presentation,
                                     isSelected = isSelectedSource(presentation.stream, selectedStream),
                                     isRecent = presentation.stream === recentStream,
-                                    onClick = { onSelect(presentation.stream) }
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onSelect(presentation.stream)
+                                    }
                                 )
                             }
                         }
