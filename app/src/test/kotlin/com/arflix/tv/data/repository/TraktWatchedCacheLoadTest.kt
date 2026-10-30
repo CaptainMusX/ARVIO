@@ -63,6 +63,9 @@ class TraktWatchedCacheLoadTest {
             every { profileStringKey(any()) } answers { stringPreferencesKey(firstArg()) }
             every { profileLongKey(any()) } answers { longPreferencesKey(firstArg()) }
             every { profileBooleanKey(any()) } answers { booleanPreferencesKey(firstArg()) }
+            every { profileStringKeyFor(any(), any()) } answers { stringPreferencesKey(secondArg()) }
+            every { profileLongKeyFor(any(), any()) } answers { longPreferencesKey(secondArg()) }
+            every { profileBooleanKeyFor(any(), any()) } answers { booleanPreferencesKey(secondArg()) }
         }
         coEvery { providers.readProviders(TrackingFeature.WATCHED) } returns setOf(SyncProvider.TRAKT)
         coEvery { syncService.getWatchedEpisodes() } returns emptySet()

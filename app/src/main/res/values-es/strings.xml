@@ -404,6 +404,9 @@
     <string name="settings_section_languages">IDIOMAS</string>
     <string name="settings_section_user_account">INFO DE USUARIO Y CUENTA</string>
     <string name="settings_force_sync">Forzar sincronización</string>
+    <string name="settings_force_trakt_sync">Forzar sincronización de Trakt</string>
+    <string name="settings_force_trakt_sync_desc">Descarga el historial de visionado, progreso de reproducción y continuar viendo desde Trakt.tv</string>
+    <string name="settings_syncing_trakt_now">Sincronizando datos de Trakt ahora…</string>
     <string name="settings_disconnect">Desconectar</string>
     <string name="settings_cloud_disconnect_confirm_title">¿Desconectar ARVIO Cloud?</string>
     <string name="settings_cloud_disconnect_confirm_desc">Tendrás que volver a iniciar sesión para sincronizar tus ajustes.</string>
@@ -1440,6 +1443,8 @@
     <string name="auth_unexpected_credential">Tipo de credencial inesperado</string>
     <string name="auth_failed_parse_google">Error al analizar las credenciales de Google</string>
     <string name="trakt_not_authenticated">No autenticado con Trakt</string>
+    <string name="trakt_reconnect_required">Tu autorización de Trakt ha caducado o fue revocada. Vuelve a conectar Trakt para reanudar la sincronización.</string>
+    <string name="trakt_sync_refresh_failed">Se importó el historial, pero no se pudo actualizar completamente Continuar viendo. Se conservaron los elementos guardados; inténtalo más tarde.</string>
     <string name="sync_supabase_auth_failed">Error en la autorización de Supabase</string>
     <string name="launcher_continue_dash">%1$s - %2$s</string>
     <string name="telegram_search_timed_out">La búsqueda en Telegram agotó el tiempo de espera</string>

@@ -223,6 +223,11 @@ class SeekPreviewStreamingDeviceTest {
             main { rebuffers = 0 }
             val enabledStart = main { player!!.currentPosition }
             val enabledDrops = main { dropped }
+            if (nativeKeyframes) {
+                val prepared = provider.prepareWorker()
+                report.put("workerPreparedDuringPlayback", prepared)
+                if (controlled) assertTrue("Worker prestart must succeed during healthy playback", prepared)
+            }
             val guard = SeekPreviewPlaybackGuard()
             var job: Job? = null
             var turns = 0

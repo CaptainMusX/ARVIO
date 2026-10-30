@@ -475,6 +475,35 @@ class SeekPreviewFrameProviderIntegrationTest {
     }
 
     @Test
+    fun `cache reads do not queue behind writer compression or pruning`() {
+        val directory = File(context.cacheDir, "provider-read-lock-${UUID.randomUUID()}")
+        val cache = SeekPreviewDiskCache(directory, 1_000_000)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(2)
+        val locked = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        try {
+            cache.write("ready", CachedPreview(bitmap(), PreviewMetadata("source", 10_000, 10_000, null, null,
+                SeekPreviewOrigin.DECODER, SeekPreviewValidity.TIMESTAMP)))
+            val writer = pool.submit {
+                synchronized(cache) { locked.countDown(); release.await() }
+            }
+            assertTrue(locked.await(2, java.util.concurrent.TimeUnit.SECONDS))
+            // The writer holds its monitor until we release it. Neither a hit nor
+            // a miss may wait for that unrelated compression/pruning operation.
+            pool.submit {
+                assertNull(cache.read("missing", "source"))
+                assertEquals(10_000L, cache.read("ready", "source")!!.metadata.actualMs)
+            }.get(2, java.util.concurrent.TimeUnit.SECONDS)
+            release.countDown()
+            writer.get(2, java.util.concurrent.TimeUnit.SECONDS)
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `disk budget is enforced while writing not only when constructing provider`() {
         val directory = File(context.cacheDir, "provider-eviction-${UUID.randomUUID()}")
         val cache = SeekPreviewDiskCache(directory, 16_000)
