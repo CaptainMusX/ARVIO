@@ -115,6 +115,10 @@ import com.arflix.tv.data.model.StreamSource
 import com.arflix.tv.ui.focus.arvioDpadFocusGroup
 import com.arflix.tv.ui.theme.ArflixTypography
 import com.arflix.tv.util.LocalDeviceType
+import com.arflix.tv.ui.theme.ErrorRed
+import com.arflix.tv.ui.theme.FormatCyan
+import com.arflix.tv.ui.theme.FormatDolbyVision
+import com.arflix.tv.ui.theme.AccentGreen as ThemeGreen
 import com.arflix.tv.ui.theme.Pink
 import com.arflix.tv.ui.theme.TextPrimary
 import com.arflix.tv.ui.theme.TextSecondary
@@ -1512,8 +1516,8 @@ private fun presentSource(
     val qualityColor = when (resolutionLabel) {
         "4K" -> AccentGold
         "1080p" -> AccentBlue
-        "720p" -> Color(0xFF06B6D4)
-        "CAM" -> Color(0xFFEF4444)
+        "720p" -> FormatCyan
+        "CAM" -> ErrorRed
         else -> TextSecondary
     }
 
@@ -2422,7 +2426,7 @@ private fun OledBadgeFlow(
             SourceBadgeView(badge, inverted = inverted)
         }
         if (presentation.stream.behaviorHints?.cached == true) {
-            val statusColor = if (inverted) Color(0xFF146B38) else Color(0xFF58D68D)
+            val statusColor = if (inverted) Color(0xFF146B38) else ThemeGreen
             Row(
                 modifier = Modifier.height(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -2797,7 +2801,7 @@ private fun CompactQualityBadge(stream: StreamSource) {
     val color = when {
         is4K -> AccentGold
         is1080 -> AccentBlue
-        is720 -> Color(0xFF06B6D4)
+        is720 -> FormatCyan
         else -> TextSecondary
     }
 
@@ -2837,7 +2841,7 @@ private fun CompactQualityBadge(stream: StreamSource) {
         if (isDV) {
             Box(
                 modifier = Modifier
-                    .background(Color(0xFFEC4899).copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .background(FormatDolbyVision.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
                 Text(
@@ -2846,7 +2850,7 @@ private fun CompactQualityBadge(stream: StreamSource) {
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
                     ),
-                    color = Color(0xFFEC4899)
+                    color = FormatDolbyVision
                 )
             }
         }
@@ -2857,7 +2861,7 @@ private fun CompactQualityBadge(stream: StreamSource) {
             // since users scan the source list for IMAX-tagged releases.
             Box(
                 modifier = Modifier
-                    .background(Color(0xFF06B6D4).copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                    .background(FormatCyan.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
                     .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
                 Text(
@@ -2866,7 +2870,7 @@ private fun CompactQualityBadge(stream: StreamSource) {
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
                     ),
-                    color = Color(0xFF06B6D4)
+                    color = FormatCyan
                 )
             }
         }

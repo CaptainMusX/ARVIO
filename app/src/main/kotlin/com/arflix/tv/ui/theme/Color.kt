@@ -110,6 +110,12 @@ val InfoBlue = ArcticWhite
 val OngoingBlue = ArcticWhite
 
 // ============================================
+// BADGE & FORMAT ACCENTS
+// ============================================
+val FormatCyan = Color(0xFF06B6D4)             // 720p, IMAX badges
+val FormatDolbyVision = Color(0xFFEC4899)      // Dolby Vision badge
+
+// ============================================
 // SPECIAL COLORS
 // ============================================
 val ImdbYellow = AccentYellow                 // Star ratings
