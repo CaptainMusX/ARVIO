@@ -50,6 +50,65 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
+    fun floatingPhoneDockReservesItsHeightGapAndSystemNavigationBeforeMeasurement() {
+        val clearance = appBottomBarClearance(
+            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 360, 0f, 24f
+        )
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(104f, 104f))
+    }
+
+    @Test
+    fun floatingTabletDockUsesItsResponsiveHeight() {
+        val clearance = appBottomBarClearance(
+            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 800, 88f, 24f
+        )
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(128f, 128f))
+    }
+
+    @Test
+    fun floatingDockReservesTheMeasuredHeightWhenLargerThanTheFallback() {
+        val clearance = appBottomBarClearance(
+            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 360, 80f, 0f
+        )
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(96f, 96f))
+    }
+
+    @Test
+    fun finalScrollableRowClearsPersistentDockForPhonesAndTablets() {
+        for (height in listOf(320, 360, 800, 1200)) {
+            for (navigation in listOf(0f, 24f, 48f)) {
+                val dockHeight = landscapeDockHeightDp(height).toFloat()
+                val clearance = appBottomBarClearance(
+                    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, height, dockHeight, navigation
+                )
+                val dockTop = height - navigation - LANDSCAPE_DOCK_BOTTOM_GAP_DP - dockHeight
+                val finalRowBottom = height - 16f - clearance.scrollInsetDp
+                assertThat(finalRowBottom).isAtMost(dockTop - 16f)
+            }
+        }
+    }
+
+    @Test
+    fun standardBarDoesNotDoubleCountMeasuredSystemNavigation() {
+        val clearance = appBottomBarClearance(AppBottomBarMode.STANDARD, true, 892, 76f, 24f)
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(24f, 76f))
+    }
+
+    @Test
+    fun standardBarKeepsItsExistingFallbackAndScrollInset() {
+        val clearance = appBottomBarClearance(AppBottomBarMode.STANDARD, true, 892, 0f, 48f)
+        assertThat(clearance).isEqualTo(AppBottomBarClearance(48f, 100f))
+    }
+
+    @Test
+    fun hiddenBarsLeaveNoNavigationClearanceInEitherMode() {
+        for (mode in AppBottomBarMode.values()) {
+            assertThat(appBottomBarClearance(mode, false, 800, 88f, 24f))
+                .isEqualTo(AppBottomBarClearance(0f, 0f))
+        }
+    }
+
+    @Test
     fun portraitPhoneKeepsStandardBottomBar() {
         val mode = appBottomBarMode(
             isTouchDevice = true,

@@ -140,6 +140,29 @@ internal fun landscapeDockWidthDp(screenWidthDp: Int): Int {
 internal fun landscapeDockHeightDp(screenHeightDp: Int): Int =
     (screenHeightDp * 0.11f).roundToInt().coerceIn(64, 112)
 
+internal const val LANDSCAPE_DOCK_BOTTOM_GAP_DP = 16
+
+internal data class AppBottomBarClearance(val scrollInsetDp: Float, val fullHeightDp: Float)
+
+internal fun appBottomBarClearance(
+    mode: AppBottomBarMode,
+    showBottomBar: Boolean,
+    screenHeightDp: Int,
+    measuredHeightDp: Float,
+    navigationInsetDp: Float,
+): AppBottomBarClearance {
+    if (!showBottomBar) return AppBottomBarClearance(0f, 0f)
+    if (mode == AppBottomBarMode.LANDSCAPE_FLOATING_DOCK) {
+        val dockHeight = maxOf(measuredHeightDp, landscapeDockHeightDp(screenHeightDp).toFloat())
+        val occupiedHeight = dockHeight + LANDSCAPE_DOCK_BOTTOM_GAP_DP + navigationInsetDp
+        // The persistent dock never scrolls away, so the last row must scroll above it.
+        return AppBottomBarClearance(occupiedHeight, occupiedHeight)
+    }
+    // Standard bar measurements already include navigationBarsPadding().
+    val fullHeight = maxOf(measuredHeightDp, (appBottomBarSpec(mode).itemHeightDp ?: 52) + navigationInsetDp)
+    return AppBottomBarClearance(navigationInsetDp, fullHeight)
+}
+
 internal fun mobileContentInsets(systemBars: WindowInsets, showBottomBar: Boolean = false): WindowInsets =
     systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
 

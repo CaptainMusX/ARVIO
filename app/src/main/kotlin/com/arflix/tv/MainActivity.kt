@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -52,6 +53,8 @@ import com.arflix.tv.ui.components.mobileContentInsets
 import com.arflix.tv.ui.components.AppBottomBarMode
 import com.arflix.tv.ui.components.currentAppBottomBarMode
 import com.arflix.tv.ui.components.currentBottomBarSpec
+import com.arflix.tv.ui.components.appBottomBarClearance
+import com.arflix.tv.ui.components.LANDSCAPE_DOCK_BOTTOM_GAP_DP
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
@@ -845,10 +848,15 @@ fun ArflixApp(
         }
     }
 
-    val barInset = if (showBottomBar && !isFloatingLandscapeDock) navigationInset else 0.dp
-    val fullBarHeight = if (showBottomBar && !isFloatingLandscapeDock) {
-        maxOf(measuredBarHeight, (barSpec.itemHeightDp ?: 52).dp + navigationInset)
-    } else 0.dp
+    val barClearance = appBottomBarClearance(
+        mode = barMode,
+        showBottomBar = showBottomBar,
+        screenHeightDp = LocalConfiguration.current.screenHeightDp,
+        measuredHeightDp = measuredBarHeight.value,
+        navigationInsetDp = navigationInset.value,
+    )
+    val barInset = barClearance.scrollInsetDp.dp
+    val fullBarHeight = barClearance.fullHeightDp.dp
 
     val nestedScrollConnection = remember(measuredBarHeightPx, currentMainRoute, showBottomBar) {
         object : NestedScrollConnection {
@@ -1023,7 +1031,7 @@ fun ArflixApp(
             ) { it },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .then(if (isFloatingLandscapeDock) Modifier.padding(bottom = navigationInset + 16.dp) else Modifier)
+                .then(if (isFloatingLandscapeDock) Modifier.padding(bottom = navigationInset + LANDSCAPE_DOCK_BOTTOM_GAP_DP.dp) else Modifier)
         ) {
             AppBottomBar(
                 currentRoute = currentRoute,
