@@ -1055,6 +1055,23 @@ private fun rememberCategoryRequester(
     return requester
 }
 
+internal data class SidebarRowColors(
+    val background: Color,
+    val foreground: Color,
+    val secondary: Color,
+    val accessory: Color,
+)
+
+internal fun sidebarRowColors(focused: Boolean, active: Boolean, isTouch: Boolean): SidebarRowColors {
+    val lightSurface = focused || (active && isTouch)
+    return SidebarRowColors(
+        background = if (lightSurface) Color.White else if (active) LiveColors.FocusBg else Color.Transparent,
+        foreground = if (lightSurface) Color.Black else if (active) LiveColors.Fg else LiveColors.FgDim,
+        secondary = if (lightSurface) Color.Black.copy(alpha = .7f) else LiveColors.FgDim,
+        accessory = if (lightSurface) Color.Black else LiveColors.FgMute,
+    )
+}
+
 @OptIn(ExperimentalTvMaterial3Api::class)
 @Composable
 private fun SidebarRow(
@@ -1083,14 +1100,7 @@ private fun SidebarRow(
     var longPressJob by remember { mutableStateOf<Job?>(null) }
     val scope = rememberCoroutineScope()
     val isTouch = LocalDeviceType.current.isTouchDevice()
-    val bg = when {
-        focused -> Color.White
-        active && isTouch -> Color.White
-        active -> LiveColors.FocusBg
-        else -> Color.Transparent
-    }
-    val foreground = if (focused) Color.Black else if (active && isTouch) Color.Black else if (active) LiveColors.Fg else LiveColors.FgDim
-    val secondary = if (focused) Color.Black.copy(alpha = .7f) else LiveColors.FgDim
+    val colors = sidebarRowColors(focused, active, isTouch)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1108,7 +1118,7 @@ private fun SidebarRow(
                 }
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .clip(if (active && isTouch) CircleShape else RoundedCornerShape(8.dp))
-                .drawBehind { drawRect(bg) }
+                .drawBehind { drawRect(colors.background) }
                 .onPreviewKeyEvent { ev ->
                     val isSelect = ev.key == Key.DirectionCenter || ev.key == Key.Enter
                     when {
@@ -1176,7 +1186,7 @@ private fun SidebarRow(
                 leadingCode != null -> Text(
                     text = leadingCode,
                     style = LiveType.NumberMono.copy(
-                        color = secondary,
+                        color = colors.secondary,
                     ),
                     modifier = Modifier.width(20.dp),
                 )
@@ -1187,7 +1197,7 @@ private fun SidebarRow(
                 icon != null -> Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = foreground,
+                    tint = colors.foreground,
                     modifier = Modifier.size(17.dp),
                 )
                 else -> Spacer(Modifier.size(14.dp))
@@ -1196,7 +1206,7 @@ private fun SidebarRow(
                 Text(
                     text = label,
                     style = LiveType.CatLabel.copy(
-                        color = foreground,
+                        color = colors.foreground,
                         fontSize = labelSize,
                         lineHeight = 13.sp,
                     ),
@@ -1208,7 +1218,7 @@ private fun SidebarRow(
                 if (count > 0) {
                     Text(
                         text = java.text.NumberFormat.getIntegerInstance().format(count),
-                        style = LiveType.NumberMono.copy(color = secondary, fontSize = 9.sp),
+                        style = LiveType.NumberMono.copy(color = colors.secondary, fontSize = 9.sp),
                     )
                 }
                 if (hasChildren) {
@@ -1216,7 +1226,7 @@ private fun SidebarRow(
                         imageVector = if (isOpenGroup)
                             Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
                         contentDescription = null,
-                        tint = if (focused) Color.Black else LiveColors.FgMute,
+                        tint = colors.accessory,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -1224,7 +1234,7 @@ private fun SidebarRow(
                     Icon(
                         imageVector = Icons.Filled.Lock,
                         contentDescription = stringResource(R.string.live_menu_unlock_category),
-                        tint = if (focused) Color.Black else LiveColors.FgMute,
+                        tint = colors.accessory,
                         modifier = Modifier.size(14.dp),
                     )
                 }

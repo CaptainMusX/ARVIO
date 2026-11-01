@@ -64,9 +64,8 @@ val PinkGlow = Color(0x33FFFFFF)
 // ============================================
 // BACKGROUND COLORS (App Background)
 // ============================================
-// Single source of truth: pure black #000000, matching colors.xml
-// background_dark (splash/window background) and ArvioSkin tokens.
-val BackgroundDark = Color(0xFF000000)        // #000000
+// Keep the normal background distinct from the optional pure-black OLED mode.
+val BackgroundDark = Color(0xFF08090A)        // #08090A
 val BackgroundCard = Color(0xFF0D0D0D)        // Slightly elevated
 val BackgroundElevated = Color(0xFF1A1A1A)    // Elevated surfaces
 val BackgroundOverlay = BackgroundDark.copy(alpha = 0.90f)
