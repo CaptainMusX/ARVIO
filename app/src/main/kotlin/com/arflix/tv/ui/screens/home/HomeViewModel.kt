@@ -3693,6 +3693,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun preloadImdbRatingsForHeroItems(items: List<MediaItem>) {
+        preloadLogosForCategoryItems(items)
         viewModelScope.launch(networkDispatcher) {
             items.filter { isActionableMediaItem(it) && !isIptvItem(it) }.forEach { item ->
                 val key = "${item.mediaType}_${item.id}"

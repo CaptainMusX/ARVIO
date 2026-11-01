@@ -453,6 +453,7 @@ ksp {
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("io.coil-kt:coil-gif:2.5.0")
     implementation("io.coil-kt:coil-svg:2.5.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("com.google.zxing:core:3.5.3")
 
     // Supabase (optional - for cloud sync)

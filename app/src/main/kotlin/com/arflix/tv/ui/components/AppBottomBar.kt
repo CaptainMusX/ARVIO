@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -60,6 +61,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.ripple
 import androidx.compose.ui.draw.drawBehind
@@ -76,7 +79,7 @@ import kotlin.math.roundToInt
 
 internal enum class AppBottomBarMode {
     STANDARD,
-    LANDSCAPE_FLOATING_DOCK,
+    LANDSCAPE_RAIL,
 }
 
 internal data class AppBottomBarSpec(
@@ -100,20 +103,20 @@ internal fun appBottomBarMode(
     isTouchDevice &&
     screenWidthDp > screenHeightDp
 ) {
-    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK
+    AppBottomBarMode.LANDSCAPE_RAIL
 } else {
     AppBottomBarMode.STANDARD
 }
 
 internal fun appBottomBarSpec(mode: AppBottomBarMode): AppBottomBarSpec = when (mode) {
-    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK -> AppBottomBarSpec(
+    AppBottomBarMode.LANDSCAPE_RAIL -> AppBottomBarSpec(
         itemHeightDp = 52,
         rowVerticalPaddingDp = 8,
         itemVerticalPaddingDp = 0,
         itemSpacingDp = 0,
         iconHorizontalPaddingDp = 0,
         iconVerticalPaddingDp = 0,
-        iconSizeDp = 32,
+        iconSizeDp = 25,
         indicatorSizeDp = 4,
         labelFontSizeSp = 11,
     )
@@ -130,19 +133,7 @@ internal fun appBottomBarSpec(mode: AppBottomBarMode): AppBottomBarSpec = when (
     )
 }
 
-/** Match the reference's roughly one-third screen width, keeping small-screen tabs tappable. */
-internal fun landscapeDockWidthDp(screenWidthDp: Int): Int {
-    val availableWidthDp = (screenWidthDp - 32).coerceAtLeast(0)
-    return (screenWidthDp * 0.34f).roundToInt()
-        .coerceAtLeast(280)
-        .coerceAtMost(availableWidthDp)
-}
-
-/** Keep the dock close to the reference's screen-height proportion while preserving tap space. */
-internal fun landscapeDockHeightDp(screenHeightDp: Int): Int =
-    (screenHeightDp * 0.11f).roundToInt().coerceIn(64, 112)
-
-internal const val LANDSCAPE_DOCK_BOTTOM_GAP_DP = 16
+internal const val LANDSCAPE_RAIL_WIDTH_DP = 64
 
 internal data class AppBottomBarClearance(val scrollInsetDp: Float, val fullHeightDp: Float)
 
@@ -154,15 +145,26 @@ internal fun appBottomBarClearance(
     navigationInsetDp: Float,
 ): AppBottomBarClearance {
     if (!showBottomBar) return AppBottomBarClearance(0f, 0f)
-    if (mode == AppBottomBarMode.LANDSCAPE_FLOATING_DOCK) {
-        val dockHeight = maxOf(measuredHeightDp, landscapeDockHeightDp(screenHeightDp).toFloat())
-        val occupiedHeight = dockHeight + LANDSCAPE_DOCK_BOTTOM_GAP_DP + navigationInsetDp
-        // The persistent dock never scrolls away, so the last row must scroll above it.
-        return AppBottomBarClearance(occupiedHeight, occupiedHeight)
+    if (mode == AppBottomBarMode.LANDSCAPE_RAIL) {
+        // The rail reserves horizontal space; only the system gesture area remains below content.
+        return AppBottomBarClearance(navigationInsetDp, navigationInsetDp)
     }
     // Standard bar measurements already include navigationBarsPadding().
     val fullHeight = maxOf(measuredHeightDp, (appBottomBarSpec(mode).itemHeightDp ?: 52) + navigationInsetDp)
     return AppBottomBarClearance(navigationInsetDp, fullHeight)
+}
+
+/** Only interactive navigation avoids a side cutout; full-width screens may draw beneath it. */
+internal fun navigationRailCutoutInsetPx(
+    systemLeftInsetPx: Int,
+    cutoutLeftInsetPx: Int,
+    systemRightInsetPx: Int,
+    cutoutRightInsetPx: Int,
+    layoutDirection: LayoutDirection,
+): Int {
+    val systemStart = if (layoutDirection == LayoutDirection.Ltr) systemLeftInsetPx else systemRightInsetPx
+    val cutoutStart = if (layoutDirection == LayoutDirection.Ltr) cutoutLeftInsetPx else cutoutRightInsetPx
+    return (cutoutStart - systemStart).coerceAtLeast(0)
 }
 
 internal fun mobileContentInsets(systemBars: WindowInsets, showBottomBar: Boolean = false): WindowInsets =
@@ -227,16 +229,15 @@ fun AppBottomBar(
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
+    currentProfile: com.arflix.tv.data.model.Profile? = null,
+    onSwitchProfile: () -> Unit = {},
 ) {
     val mode = currentAppBottomBarMode()
     val spec = appBottomBarSpec(mode)
-    val isFloatingDock = mode == AppBottomBarMode.LANDSCAPE_FLOATING_DOCK
+    val isRail = mode == AppBottomBarMode.LANDSCAPE_RAIL
     val accent = resolveAccentColor(fallback = Color.White)
     val barHeight = (spec.itemHeightDp ?: 52).dp
-    val configuration = LocalConfiguration.current
-    val dockWidth = landscapeDockWidthDp(configuration.screenWidthDp).dp
-    val dockHeight = landscapeDockHeightDp(configuration.screenHeightDp).dp
-    val surfaceShape = if (isFloatingDock) RoundedCornerShape(18.dp) else RectangleShape
+    val surfaceShape = RectangleShape
 
     val baseModifier = if (hazeState != null) {
         modifier.hazeChild(
@@ -252,61 +253,54 @@ fun AppBottomBar(
         modifier.background(Color(0xCC000000))
     }
 
-    val haptic = LocalHapticFeedback.current
-
-    Column(
-        modifier = baseModifier
-            .then(
-                if (isFloatingDock) {
-                    Modifier
-                        .width(dockWidth)
-                        .clip(surfaceShape)
-                        .border(0.5.dp, Color.White.copy(alpha = 0.12f), surfaceShape)
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .drawBehind {
-                // X-style subtle hairline top border
-                            val strokeWidth = 0.5.dp.toPx()
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.12f),
-                                start = Offset(0f, strokeWidth / 2),
-                                end = Offset(size.width, strokeWidth / 2),
-                                strokeWidth = strokeWidth
-                            )
-                        }
-                        .navigationBarsPadding()
-                }
-            )
-    ) {
-        val items = bottomBarItems.filter { it.route != "tv" || !KidsNavigation.hideLiveTv }
-        if (isFloatingDock) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(dockHeight)
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+    val items = bottomBarItems.filter { it.route != "tv" || !KidsNavigation.hideLiveTv }
+    if (isRail) {
+        Column(
+            modifier = baseModifier
+                .width(LANDSCAPE_RAIL_WIDTH_DP.dp)
+                .fillMaxHeight()
+                .navigationBarsPadding()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Only the upper group scrolls on very short windows. Settings stays pinned below it.
+            Column(
+                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                items.forEach { item ->
-                    BottomBarItemButton(
-                        item,
-                        currentRoute,
-                        onNavigate,
-                        spec,
-                        accent,
-                        Modifier.weight(1f).fillMaxHeight()
-                    )
+                if (currentProfile != null) {
+                    Box(
+                        modifier = Modifier.size(48.dp)
+                            .clickable(onClickLabel = stringResource(R.string.switch_profile), onClick = onSwitchProfile),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.size(32.dp).clip(CircleShape)) {
+                            ProfileAvatarVisual(profile = currentProfile, letterFontSize = 14.sp, iconPadding = 4.dp)
+                        }
+                    }
+                }
+                items.filter { it.route != "settings" }.forEach { item ->
+                    BottomBarItemButton(item, currentRoute, onNavigate, spec, accent, Modifier.height(48.dp))
                 }
             }
-        } else {
+            items.firstOrNull { it.route == "settings" }?.let { item ->
+                BottomBarItemButton(item, currentRoute, onNavigate, spec, accent, Modifier.height(48.dp))
+            }
+        }
+    } else {
+        Column(
+            modifier = baseModifier.fillMaxWidth()
+                .drawBehind {
+                    val strokeWidth = 0.5.dp.toPx()
+                    drawLine(Color.White.copy(alpha = 0.12f), Offset(0f, strokeWidth / 2),
+                        Offset(size.width, strokeWidth / 2), strokeWidth)
+                }
+                .navigationBarsPadding()
+        ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(barHeight),
+                modifier = Modifier.fillMaxWidth().height(barHeight),
                 horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 items.forEach { item ->
                     BottomBarItemButton(item, currentRoute, onNavigate, spec, accent, Modifier.weight(1f).fillMaxHeight())

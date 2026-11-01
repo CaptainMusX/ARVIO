@@ -109,6 +109,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import android.content.res.Configuration
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -3340,6 +3341,8 @@ private fun HomeRowsLayer(
     onItemClick: (MediaItem) -> Unit,
     onItemLongClick: ((MediaItem, Boolean) -> Unit)? = null
 ) {
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     if (!isMobile && netflix != null) {
         NetflixTvHomeRowsLayer(
             categories = categories,
@@ -3355,34 +3358,62 @@ private fun HomeRowsLayer(
             onItemClick = onItemClick
         )
     } else if (isMobile) {
-        MobileHomeRowsLayer(
-            categories = categories,
-            cardLogoUrls = cardLogoUrls,
-            cardImdbRatings = cardImdbRatings,
-            onPreloadHeroImdbRatings = onPreloadHeroImdbRatings,
-            contentStartPadding = contentStartPadding,
-            currentProfile = currentProfile,
-            onNavigateToSearch = onNavigateToSearch,
-            onSwitchProfile = onSwitchProfile,
-            usePosterCards = usePosterCards,
-            categoryHasMoreMap = categoryHasMoreMap,
-            isSlowLoading = isSlowLoading,
-            onRetry = onRetry,
-            onLoadMoreCategory = onLoadMoreCategory,
-            onNavigateToDetails = onNavigateToDetails,
-            onItemClick = onItemClick,
-            onItemLongClick = onItemLongClick,
-            onViewAllCategory = onViewAllCategory,
-            onCategoryVisiblePosition = { categoryId, lastVisibleItemIndex ->
-                onMobileCategoryVisiblePosition(categoryId, lastVisibleItemIndex)
-                val rowIndex = categories.indexOfFirst { it.id == categoryId }
-                val visibleItem = categories
-                    .getOrNull(rowIndex)
-                    ?.items
-                    ?.getOrNull(lastVisibleItemIndex)
-                if (visibleItem != null) onItemFocusedPrefetch(visibleItem)
+        HomeOrientationState(isLandscape) {
+            if (isLandscape) {
+                LandscapeHomeRowsLayer(
+                    categories = categories,
+                    cardLogoUrls = cardLogoUrls,
+                    cardImdbRatings = cardImdbRatings,
+                    onPreloadHeroImdbRatings = onPreloadHeroImdbRatings,
+                    contentStartPadding = contentStartPadding,
+                    onNavigateToDetails = onNavigateToDetails,
+                    onItemClick = onItemClick,
+                    onItemLongClick = onItemLongClick,
+                    onViewAllCategory = onViewAllCategory,
+                    onCategoryVisiblePosition = { categoryId, lastVisibleItemIndex ->
+                        onMobileCategoryVisiblePosition(categoryId, lastVisibleItemIndex)
+                        val rowIndex = categories.indexOfFirst { it.id == categoryId }
+                        val visibleItem = categories
+                            .getOrNull(rowIndex)
+                            ?.items
+                            ?.getOrNull(lastVisibleItemIndex)
+                        if (visibleItem != null) onItemFocusedPrefetch(visibleItem)
+                    },
+                    categoryHasMoreMap = categoryHasMoreMap,
+                    isSlowLoading = isSlowLoading,
+                    onRetry = onRetry
+                )
+            } else {
+                MobileHomeRowsLayer(
+                    categories = categories,
+                    cardLogoUrls = cardLogoUrls,
+                    cardImdbRatings = cardImdbRatings,
+                    onPreloadHeroImdbRatings = onPreloadHeroImdbRatings,
+                    contentStartPadding = contentStartPadding,
+                    currentProfile = currentProfile,
+                    onNavigateToSearch = onNavigateToSearch,
+                    onSwitchProfile = onSwitchProfile,
+                    usePosterCards = usePosterCards,
+                    categoryHasMoreMap = categoryHasMoreMap,
+                    isSlowLoading = isSlowLoading,
+                    onRetry = onRetry,
+                    onLoadMoreCategory = onLoadMoreCategory,
+                    onNavigateToDetails = onNavigateToDetails,
+                    onItemClick = onItemClick,
+                    onItemLongClick = onItemLongClick,
+                    onViewAllCategory = onViewAllCategory,
+                    onCategoryVisiblePosition = { categoryId, lastVisibleItemIndex ->
+                        onMobileCategoryVisiblePosition(categoryId, lastVisibleItemIndex)
+                        val rowIndex = categories.indexOfFirst { it.id == categoryId }
+                        val visibleItem = categories
+                            .getOrNull(rowIndex)
+                            ?.items
+                            ?.getOrNull(lastVisibleItemIndex)
+                        if (visibleItem != null) onItemFocusedPrefetch(visibleItem)
+                    }
+                )
             }
-        )
+        }
     } else {
         TvHomeRowsLayer(
             categories = categories,

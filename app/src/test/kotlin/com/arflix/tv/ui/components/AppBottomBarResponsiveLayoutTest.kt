@@ -2,8 +2,38 @@ package com.arflix.tv.ui.components
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 
 class AppBottomBarResponsiveLayoutTest {
+    @Test fun contentCanDrawUnderCutoutWhileRailKeepsIndependentClearance() {
+        val insets = mobileContentInsets(
+            systemBars = WindowInsets(0, 24, 0, 24),
+            showBottomBar = true,
+        )
+        val density = Density(1f)
+        assertThat(insets.getLeft(density, LayoutDirection.Ltr)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(0, 44, 0, 0, LayoutDirection.Ltr)).isEqualTo(44)
+        assertThat(navigationRailCutoutInsetPx(24, 44, 0, 0, LayoutDirection.Ltr)).isEqualTo(20)
+        assertThat(navigationRailCutoutInsetPx(44, 44, 0, 0, LayoutDirection.Ltr)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(44, 0, 0, 0, LayoutDirection.Ltr)).isEqualTo(0)
+        assertThat(insets.getTop(density)).isEqualTo(24)
+        assertThat(insets.getBottom(density)).isEqualTo(0)
+    }
+
+    @Test fun rtlRailUsesRightCutoutAndSubtractsConsumedRightSystemInset() {
+        assertThat(navigationRailCutoutInsetPx(0, 0, 0, 44, LayoutDirection.Rtl)).isEqualTo(44)
+        assertThat(navigationRailCutoutInsetPx(0, 0, 24, 44, LayoutDirection.Rtl)).isEqualTo(20)
+        assertThat(navigationRailCutoutInsetPx(0, 0, 44, 44, LayoutDirection.Rtl)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(0, 0, 48, 0, LayoutDirection.Rtl)).isEqualTo(0)
+    }
+
+    @Test fun cutoutOnOppositeEdgeDoesNotMoveRail() {
+        assertThat(navigationRailCutoutInsetPx(0, 0, 0, 44, LayoutDirection.Ltr)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(0, 44, 0, 0, LayoutDirection.Rtl)).isEqualTo(0)
+    }
+
     @Test fun subscreenFlagsOnlyAffectTheirOwnDestination() {
         assertThat(shouldShowBottomBar(true, "home", false, true, true)).isTrue()
         assertThat(shouldShowBottomBar(true, "settings", false, true, false)).isFalse()
@@ -14,7 +44,7 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun landscapePhoneUsesFloatingDock() {
+    fun landscapePhoneUsesRail() {
         val mode = appBottomBarMode(
             isTouchDevice = true,
             smallestScreenWidthDp = 411,
@@ -22,68 +52,24 @@ class AppBottomBarResponsiveLayoutTest {
             screenHeightDp = 360,
         )
 
-        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
+        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_RAIL)
     }
 
     @Test
-    fun floatingDockKeepsTheStandardTouchTargetAndIconSize() {
-        val spec = appBottomBarSpec(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
-
-        assertThat(spec.itemHeightDp).isEqualTo(52)
-        assertThat(spec.iconSizeDp).isEqualTo(32)
-        assertThat(spec.labelFontSizeSp).isEqualTo(11)
+    fun railKeepsPortraitIconSize() {
+        assertThat(appBottomBarSpec(AppBottomBarMode.LANDSCAPE_RAIL).iconSizeDp)
+            .isEqualTo(appBottomBarSpec(AppBottomBarMode.STANDARD).iconSizeDp)
     }
 
     @Test
-    fun floatingDockTracksTheReferenceScreenWidthRatio() {
-        for (screenWidthDp in listOf(892, 1280, 1920, 2560)) {
-            val ratio = landscapeDockWidthDp(screenWidthDp).toDouble() / screenWidthDp
-            assertThat(ratio).isWithin(0.001).of(0.34)
-        }
-    }
-
-    @Test
-    fun floatingDockKeepsSmallScreenTabsTappableWithoutLosingEdgeGaps() {
-        assertThat(landscapeDockWidthDp(600)).isEqualTo(280)
-        assertThat(landscapeDockWidthDp(360)).isEqualTo(280)
-        assertThat(landscapeDockWidthDp(300)).isEqualTo(268)
-    }
-
-    @Test
-    fun floatingPhoneDockReservesItsHeightGapAndSystemNavigationBeforeMeasurement() {
-        val clearance = appBottomBarClearance(
-            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 360, 0f, 24f
-        )
-        assertThat(clearance).isEqualTo(AppBottomBarClearance(104f, 104f))
-    }
-
-    @Test
-    fun floatingTabletDockUsesItsResponsiveHeight() {
-        val clearance = appBottomBarClearance(
-            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 800, 88f, 24f
-        )
-        assertThat(clearance).isEqualTo(AppBottomBarClearance(128f, 128f))
-    }
-
-    @Test
-    fun floatingDockReservesTheMeasuredHeightWhenLargerThanTheFallback() {
-        val clearance = appBottomBarClearance(
-            AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, 360, 80f, 0f
-        )
-        assertThat(clearance).isEqualTo(AppBottomBarClearance(96f, 96f))
-    }
-
-    @Test
-    fun finalScrollableRowClearsPersistentDockForPhonesAndTablets() {
-        for (height in listOf(320, 360, 800, 1200)) {
-            for (navigation in listOf(0f, 24f, 48f)) {
-                val dockHeight = landscapeDockHeightDp(height).toFloat()
-                val clearance = appBottomBarClearance(
-                    AppBottomBarMode.LANDSCAPE_FLOATING_DOCK, true, height, dockHeight, navigation
-                )
-                val dockTop = height - navigation - LANDSCAPE_DOCK_BOTTOM_GAP_DP - dockHeight
-                val finalRowBottom = height - 16f - clearance.scrollInsetDp
-                assertThat(finalRowBottom).isAtMost(dockTop - 16f)
+    fun railReservesOnlySystemBottomInsetRegardlessOfMeasuredHeight() {
+        for (height in listOf(240, 360, 800)) {
+            for (measured in listOf(0f, 64f, 800f)) {
+                for (navigation in listOf(0f, 24f, 48f)) {
+                    assertThat(appBottomBarClearance(AppBottomBarMode.LANDSCAPE_RAIL,
+                        true, height, measured, navigation))
+                        .isEqualTo(AppBottomBarClearance(navigation, navigation))
+                }
             }
         }
     }
@@ -121,7 +107,7 @@ class AppBottomBarResponsiveLayoutTest {
     }
 
     @Test
-    fun landscapeTabletUsesFloatingDock() {
+    fun landscapeTabletUsesRail() {
         val mode = appBottomBarMode(
             isTouchDevice = true,
             smallestScreenWidthDp = 700,
@@ -129,7 +115,7 @@ class AppBottomBarResponsiveLayoutTest {
             screenHeightDp = 800,
         )
 
-        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_FLOATING_DOCK)
+        assertThat(mode).isEqualTo(AppBottomBarMode.LANDSCAPE_RAIL)
     }
 
     @Test
