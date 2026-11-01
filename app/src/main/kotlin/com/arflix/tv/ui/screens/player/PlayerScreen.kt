@@ -1820,7 +1820,9 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
             }
     }
 
-    val useNativeSeekKeyframes = uiState.selectedStreamUrl?.let {
+    // Disabled for TV and mobile until seek previews are consistently reliable.
+    val seekThumbnailsEnabled = false
+    val useNativeSeekKeyframes = seekThumbnailsEnabled && uiState.selectedStreamUrl?.let {
         it.startsWith("https://", ignoreCase = true) || it.startsWith("http://", ignoreCase = true)
     } == true &&
         supportsNativeKeyframes(previewVideoFormat?.width ?: 0,
@@ -1840,6 +1842,10 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
         uiState.selectedStreamUrl, uiState.streamSelectionNonce, duration, args.isLiveStream,
         uiState.selectedStream?.preview, allowSecondarySeekPreviewDecoder, useNativeSeekKeyframes,
     ) {
+        if (!seekThumbnailsEnabled) {
+            seekPreviewProvider.configure(null)
+            return@LaunchedEffect
+        }
         val url = uiState.selectedStreamUrl
         val selected = uiState.selectedStream
         val headers = selected?.behaviorHints?.proxyHeaders?.request.orEmpty().safePlaybackHeaders()
@@ -1871,7 +1877,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
 
     val latestSeekBrowsing by rememberUpdatedState(seekInteraction.browsing)
     LaunchedEffect(hasPlaybackStarted, isPlaying, isBuffering, previewStatus.sourceGeneration, isCasting) {
-        if (!hasPlaybackStarted || !isPlaying || isBuffering || args.isLiveStream || isCasting) return@LaunchedEffect
+        if (!seekThumbnailsEnabled || !hasPlaybackStarted || !isPlaying || isBuffering || args.isLiveStream || isCasting) return@LaunchedEffect
         delay(3_000)
         if (exoPlayer.isPlaying && !latestSeekBrowsing &&
             lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
@@ -1882,7 +1888,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
 
     val controlsPreviewPosition = if (isControlScrubbing || seekInteraction.phase == SeekPhase.Exiting) scrubPreviewPosition else currentPosition
     val previewTarget = if (seekInteraction.phase != SeekPhase.Idle) seekInteraction.targetMs else currentPosition
-    val previewRequested = !isCasting && !args.isLiveStream && hasPlaybackStarted && duration > 0L &&
+    val previewRequested = seekThumbnailsEnabled && !isCasting && !args.isLiveStream && hasPlaybackStarted && duration > 0L &&
         seekInteraction.browsing
     val previewFrameForTarget = seekPreviewFrame?.takeIf {
         seekPreviewProvider.matchesTarget(it, previewTarget)
@@ -1890,8 +1896,8 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     val displayPreviewFrame = seekPreviewFrame?.takeIf {
         seekPreviewProvider.matchesDisplayTarget(it, previewTarget)
     }
-    val previewAvailable = displayPreviewFrame != null || (previewStatus.capability != SeekPreviewCapability.UNAVAILABLE &&
-        unavailablePreviewTarget != (previewStatus.sourceGeneration to previewTarget))
+    val previewAvailable = seekThumbnailsEnabled && (displayPreviewFrame != null || (previewStatus.capability != SeekPreviewCapability.UNAVAILABLE &&
+        unavailablePreviewTarget != (previewStatus.sourceGeneration to previewTarget)))
     val showQuickSeekPreview = seekInteraction.previewSession &&
         seekInteraction.surface == SeekSurface.Quick && previewAvailable
     var restoredPreviewWindow by remember { mutableStateOf<List<SeekPreviewFrame>>(emptyList()) }
@@ -1957,7 +1963,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     LaunchedEffect(hasPlaybackStarted, isPlaying, isBuffering, seekInteraction.phase,
         previewStatus.sourceGeneration, frameRateSurface, isCasting) {
         val surface = frameRateSurface
-        if (Build.VERSION.SDK_INT < 24 || surface == null || !hasPlaybackStarted || !isPlaying ||
+        if (!seekThumbnailsEnabled || Build.VERSION.SDK_INT < 24 || surface == null || !hasPlaybackStarted || !isPlaying ||
             isBuffering || seekInteraction.browsing || isCasting || args.isLiveStream) return@LaunchedEffect
         var lastBucket = -1L
         while (!playerReleased && surface.isValid) {
@@ -1997,7 +2003,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     val previewPlaybackGuard = remember(previewStatus.sourceGeneration) { SeekPreviewPlaybackGuard() }
     LaunchedEffect(hasPlaybackStarted, isBuffering, isPlaying, seekInteraction.phase,
         previewStatus.sourceGeneration, isCasting) {
-        if (!hasPlaybackStarted || isBuffering || !isPlaying || seekInteraction.browsing ||
+        if (!seekThumbnailsEnabled || !hasPlaybackStarted || isBuffering || !isPlaying || seekInteraction.browsing ||
             args.isLiveStream || isCasting) return@LaunchedEffect
         val guard = previewPlaybackGuard
         val connectivity = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
@@ -4895,7 +4901,7 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                         Spacer(modifier = Modifier.height(if (isTouchDevice) 4.dp else 6.dp))
 
                         // Preview overlays the controls; entering/exiting seek must not move them.
-                        if (isControlScrubbing && duration > 0L && !isCasting && !args.isLiveStream) {
+                        if (seekThumbnailsEnabled && isControlScrubbing && duration > 0L && !isCasting && !args.isLiveStream) {
                             val previewWidth = if (isTouchDevice) 168.dp else 224.dp
                             val previewHeight = previewWidth * 9f / 16f
                             BoxWithConstraints(
