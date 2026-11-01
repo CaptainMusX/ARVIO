@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.arflix.tv.ui.components.landscapeDeckLayout
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -44,7 +47,6 @@ import com.arflix.tv.data.model.Category
 import com.arflix.tv.data.model.CollectionTileShape
 import com.arflix.tv.data.model.MediaItem
 import com.arflix.tv.data.model.MediaType
-import com.arflix.tv.data.model.Profile
 import com.arflix.tv.data.model.SportsAddonCapabilities
 import com.arflix.tv.data.model.isPortrait
 import com.arflix.tv.ui.components.CardLayoutMode
@@ -61,7 +63,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * Landscape Home Rows Layer:
- * - Top Item: [LandscapeHomeHero] containing the Left Hero Details + Right [StackedMovieDeck].
+ * - Top Item: [LandscapeHomeHero] containing the adaptive layered carousel.
  * - Catalog Items: Category rows with landscape-tailored padding and card dimensions.
  */
 @Composable
@@ -71,9 +73,6 @@ fun LandscapeHomeRowsLayer(
     cardImdbRatings: Map<String, String> = emptyMap(),
     onPreloadHeroImdbRatings: (List<MediaItem>) -> Unit = {},
     contentStartPadding: Dp,
-    currentProfile: Profile? = null,
-    onNavigateToSearch: () -> Unit = {},
-    onSwitchProfile: () -> Unit = {},
     onNavigateToDetails: (MediaType, Int, Int?, Int?) -> Unit = { _, _, _, _ -> },
     onItemClick: (MediaItem) -> Unit,
     onItemLongClick: ((MediaItem, Boolean) -> Unit)? = null,
@@ -109,7 +108,7 @@ fun LandscapeHomeRowsLayer(
         }.distinctBy { "${it.mediaType}_${it.id}" }
     }
 
-    var activeHeroIndex by remember(heroItems) { mutableIntStateOf(0) }
+    var activeHeroIndex by rememberSaveable { mutableIntStateOf(0) }
 
     LaunchedEffect(heroItems) {
         if (heroItems.isNotEmpty()) {
@@ -117,27 +116,29 @@ fun LandscapeHomeRowsLayer(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        val layout = landscapeDeckLayout(
+            (maxWidth.value - 32f).coerceAtLeast(1f),
+            (maxHeight - LocalBottomBarInset.current).value,
+        )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp + LocalBottomBarInset.current),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(if (layout.compact) 8.dp else 20.dp)
         ) {
             // ── 1. Top Landscape Hero (Details + Stacked Movie Deck) ────────────
             item(key = "landscape_hero", contentType = "landscape_hero") {
                 LandscapeHomeHero(
                     items = heroItems,
-                    activeIndex = activeHeroIndex,
+                    layout = layout,
+                    activeIndex = activeHeroIndex.coerceIn(0, (heroItems.size - 1).coerceAtLeast(0)),
                     onActiveIndexChanged = { activeHeroIndex = it },
                     cardLogoUrls = cardLogoUrls,
                     cardImdbRatings = cardImdbRatings,
-                    currentProfile = currentProfile,
-                    onNavigateToSearch = onNavigateToSearch,
-                    onSwitchProfile = onSwitchProfile,
                     onDetails = { item ->
                         onNavigateToDetails(item.mediaType, item.id, null, null)
                     }
@@ -155,8 +156,13 @@ fun LandscapeHomeRowsLayer(
             val isCollectionRow = category.id.startsWith("collection_row_")
             val rowKey = remember(category.id) { "home:${category.id}" }
             val rowUsePosterCards = rememberCatalogueRowLayoutMode(rowKey) == CardLayoutMode.POSTER
+            val compactCatalogCards = layout.compact && !isContinueWatching && !isCollectionRow &&
+                category.id != SportsAddonCapabilities.SPORTS_CATEGORY_ROW_ID &&
+                category.id != SportsAddonCapabilities.POPULAR_LIVE_TV_ROW_ID
             val isPortrait = category.isPortrait(rowUsePosterCards)
-            val rowCardWidth = if (isPortrait) 130.dp else 210.dp
+            val rowCardWidth = if (isPortrait) {
+                if (layout.compact) 104.dp else 130.dp
+            } else if (layout.compact) 176.dp else 210.dp
             val rowState = rememberLazyListState()
 
             LaunchedEffect(rowState, category.id) {
@@ -279,14 +285,19 @@ fun LandscapeHomeRowsLayer(
 
                             if (isRanked && index < 10) {
                                 Box(modifier = Modifier.width(rowCardWidth)) {
-                                    val cardLogoUrl = if (isCollectionRow) null else cardLogoUrls["${item.mediaType}_${item.id}"]
+                                    val cardLogoUrl = if (isCollectionRow) null else (cardLogoUrls["${item.mediaType}_${item.id}"]
+                                        ?: cardLogoUrls["${item.mediaType.name.lowercase()}_${item.id}"])
                                     ArvioMediaCard(
                                         item = item,
                                         width = rowCardWidth,
                                         isLandscape = !isRowPortrait,
                                         logoImageUrl = cardLogoUrl,
+                                        showLogoImage = true,
                                         showProgress = false,
                                         showTitle = !item.collectionHideTitle,
+                                        showSubtitle = true,
+                                        titleMaxLines = if (compactCatalogCards) 2 else 1,
+                                        titleMinLines = if (compactCatalogCards) 2 else 1,
                                         isFocusedOverride = false,
                                         enableSystemFocus = false,
                                         onFocused = {},
@@ -304,14 +315,19 @@ fun LandscapeHomeRowsLayer(
                                     )
                                 }
                             } else {
-                                val cardLogoUrl = if (isCollectionRow) null else cardLogoUrls["${item.mediaType}_${item.id}"]
+                                val cardLogoUrl = if (isCollectionRow) null else (cardLogoUrls["${item.mediaType}_${item.id}"]
+                                    ?: cardLogoUrls["${item.mediaType.name.lowercase()}_${item.id}"])
                                 ArvioMediaCard(
                                     item = item,
                                     width = rowCardWidth,
                                     isLandscape = !isRowPortrait,
                                     logoImageUrl = cardLogoUrl,
+                                    showLogoImage = true,
                                     showProgress = isContinueWatching,
                                     showTitle = !item.collectionHideTitle,
+                                    showSubtitle = true,
+                                    titleMaxLines = if (compactCatalogCards) 2 else 1,
+                                    titleMinLines = if (compactCatalogCards) 2 else 1,
                                     isFocusedOverride = false,
                                     enableSystemFocus = false,
                                     onFocused = {},

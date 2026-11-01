@@ -14,7 +14,6 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,10 +28,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,26 +75,19 @@ private val CardBorderColor = Color(0x33FFFFFF)
 private val FrontCardBorderColor = Color(0x55FFFFFF)
 
 /**
- * 16:9 Landscape Stacked Movie Deck.
- *
- * Implements a horizontal deck of large landscape 16:9 cards:
- * - Active front card (Movie 1) is dominant, positioned toward the left side, occupying ~48%
- *   of screen width with a strict 16:9 aspect ratio.
- * - Behind the front card, 3-4 subsequent 16:9 landscape cards are placed, progressively offset
- *   toward the right so only their right strips are exposed, with symmetrical vertical step-downs.
- * - Active card hosts its own backdrop, logo/title, rating, year, genre, and description.
- * - Swiping smoothly transitions Movie 2 into Movie 1's exact left position and size.
+ * Layered landscape carousel. Shared viewport geometry controls card size and wing count;
+ * all screens retain the original 16:9 cards and full layered swipe transitions.
  */
 @Composable
 fun StackedMovieDeck(
     items: List<MediaItem>,
+    layout: LandscapeDeckLayout,
     currentIndex: Int,
     onCurrentIndexChanged: (Int) -> Unit,
     onDetails: (MediaItem) -> Unit,
     cardLogoUrls: Map<String, String> = emptyMap(),
     cardImdbRatings: Map<String, String> = emptyMap(),
     modifier: Modifier = Modifier,
-    maxVisibleCards: Int = 5,
     autoAdvanceDurationMs: Long = 10000L
 ) {
     if (items.isEmpty()) return
@@ -107,18 +95,13 @@ fun StackedMovieDeck(
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
-    BoxWithConstraints(
+    Box(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
-        val totalAvailableWidth = maxWidth
-        // Dominant center card occupies ~64% of total available width to maximize presence and eliminate wasted side space
-        val centerCardWidth = (totalAvailableWidth * 0.64f).coerceIn(380.dp, 840.dp)
-        val centerCardHeight = centerCardWidth * (9f / 16f)
-
-        // Generous peek width per stacked wing card so side tiles are clearly visible
-        val remainingWingSpace = (totalAvailableWidth - centerCardWidth) / 2f
-        val stepOffset = (remainingWingSpace * 0.42f).coerceIn(48.dp, 84.dp)
+        val centerCardWidth = layout.cardWidthDp.dp
+        val centerCardHeight = layout.cardHeightDp.dp
+        val stepOffset = layout.wingStepDp.dp
 
         val stepOffsetPx = with(density) { stepOffset.toPx() }
         val cardWidthPx = with(density) { centerCardWidth.toPx() }
@@ -149,6 +132,7 @@ fun StackedMovieDeck(
                     )
                 }
                 val lgUrl = cardLogoUrls["${itm.mediaType}_${itm.id}"]
+                    ?: cardLogoUrls["${itm.mediaType.name.lowercase()}_${itm.id}"]
                 if (!lgUrl.isNullOrBlank()) {
                     imageLoader.enqueue(
                         ImageRequest.Builder(context)
@@ -161,8 +145,14 @@ fun StackedMovieDeck(
             }
         }
 
+        // Resizing invalidates pixel-based drag positions and auto-advance targets.
+        LaunchedEffect(cardWidthPx) {
+            animOffset.snapTo(0f)
+            isDragging = false
+        }
+
         // Auto advance when idle
-        LaunchedEffect(currentIndex, isDragging, lastInteractionTime, autoAdvanceDurationMs, items.size) {
+        LaunchedEffect(currentIndex, isDragging, lastInteractionTime, autoAdvanceDurationMs, items.size, cardWidthPx) {
             if (autoAdvanceDurationMs <= 0 || items.size <= 1 || isDragging) return@LaunchedEffect
             delay(autoAdvanceDurationMs)
             if (!isDragging && System.currentTimeMillis() - lastInteractionTime >= autoAdvanceDurationMs) {
@@ -179,7 +169,7 @@ fun StackedMovieDeck(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(centerCardHeight + 24.dp)
-                .pointerInput(items.size, currentIndex) {
+                .pointerInput(items.size, currentIndex, cardWidthPx) {
                     if (items.size <= 1) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -301,6 +291,8 @@ fun StackedMovieDeck(
                 key("${card.item.mediaType}_${card.item.id}_${card.itemIndex}") {
                     LandscapeDeckCard(
                         item = card.item,
+                        compact = layout.compact,
+                        cardAspectRatio = layout.aspectRatio,
                         absPos = card.absPos,
                         contentAlpha = card.contentAlpha,
                         scrimAlpha = card.scrimAlpha,
@@ -368,6 +360,8 @@ private data class CardRenderInfo(
 @Composable
 private fun LandscapeDeckCard(
     item: MediaItem,
+    compact: Boolean,
+    cardAspectRatio: Float,
     absPos: Float,
     contentAlpha: Float,
     scrimAlpha: Float,
@@ -388,6 +382,7 @@ private fun LandscapeDeckCard(
 
     val logoUrl = remember(item.id, item.mediaType, cardLogoUrls) {
         cardLogoUrls["${item.mediaType}_${item.id}"]
+            ?: cardLogoUrls["${item.mediaType.name.lowercase()}_${item.id}"]
     }
 
     val dynamicImdb = cardImdbRatings["${item.mediaType}_${item.id}"]
@@ -420,9 +415,7 @@ private fun LandscapeDeckCard(
         }.orEmpty()
     }
 
-    val genreIcon = remember(primaryGenre) {
-        genreEmojiFor(primaryGenre)
-    }
+    val imageLoader = context.imageLoader
 
     val cleanOverview = remember(item.id, item.overview) {
         item.overview
@@ -442,15 +435,13 @@ private fun LandscapeDeckCard(
 
     // Responsive scaling based on card size
     val isLargeCard = cardWidth >= 600.dp
-    val logoMaxHeight = if (isLargeCard) 96.dp else 64.dp
-    val logoMaxWidth = if (isLargeCard) 440.dp else 280.dp
-    val titleFontSize = if (isLargeCard) 30.sp else 22.sp
-    val metadataFontSize = if (isLargeCard) 14.5.sp else 12.sp
-    val metadataIconSize = if (isLargeCard) 16.dp else 13.dp
+    val logoMaxHeight = if (compact) (cardWidth / cardAspectRatio * 0.30f) else if (isLargeCard) 96.dp else 64.dp
+    val logoMaxWidth = if (compact) cardWidth * 0.6f else if (isLargeCard) 440.dp else 280.dp
+    val titleFontSize = if (compact) 18.sp else if (isLargeCard) 30.sp else 22.sp
     val overviewFontSize = if (isLargeCard) 13.5.sp else 11.5.sp
     val overviewLineHeight = if (isLargeCard) 19.sp else 16.sp
     val cardPaddingHorizontal = if (isLargeCard) 28.dp else 18.dp
-    val cardPaddingBottom = if (isLargeCard) 24.dp else 14.dp
+    val cardPaddingBottom = if (compact) 10.dp else if (isLargeCard) 24.dp else 14.dp
 
     Box(
         modifier = Modifier
@@ -462,7 +453,7 @@ private fun LandscapeDeckCard(
                 this.alpha = alpha
             }
             .width(cardWidth)
-            .aspectRatio(16f / 9f)
+            .aspectRatio(cardAspectRatio)
             .shadow(elevation = elevation, shape = LandscapeCardShape, clip = false)
             .clip(LandscapeCardShape)
             .background(Color(0xFF141419))
@@ -501,9 +492,9 @@ private fun LandscapeDeckCard(
                     .background(
                         Brush.horizontalGradient(
                             colorStops = arrayOf(
-                                0.00f to Color.Black.copy(alpha = 0.95f * scrimAlpha),
-                                0.42f to Color.Black.copy(alpha = 0.85f * scrimAlpha),
-                                0.72f to Color.Black.copy(alpha = 0.40f * scrimAlpha),
+                                0.00f to Color.Black.copy(alpha = 0.65f * scrimAlpha),
+                                0.42f to Color.Black.copy(alpha = 0.40f * scrimAlpha),
+                                0.72f to Color.Black.copy(alpha = 0.15f * scrimAlpha),
                                 1.00f to Color.Transparent
                             )
                         )
@@ -546,7 +537,8 @@ private fun LandscapeDeckCard(
                 verticalArrangement = Arrangement.Bottom
             ) {
                 // Title / Clearlogo (substantially increased size)
-                if (!logoUrl.isNullOrBlank()) {
+                var logoLoadFailed by remember(logoUrl) { mutableStateOf(false) }
+                if (!logoUrl.isNullOrBlank() && !logoLoadFailed) {
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(logoUrl)
@@ -557,6 +549,7 @@ private fun LandscapeDeckCard(
                         contentDescription = item.title,
                         contentScale = ContentScale.Fit,
                         alignment = Alignment.CenterStart,
+                        onError = { logoLoadFailed = true },
                         modifier = Modifier
                             .heightIn(max = logoMaxHeight)
                             .widthIn(max = logoMaxWidth)
@@ -566,87 +559,47 @@ private fun LandscapeDeckCard(
                         text = item.title.uppercase(),
                         style = ArflixTypography.heroTitle.copy(
                             fontSize = titleFontSize,
+                            lineHeight = if (compact) 22.sp else if (isLargeCard) 36.sp else 28.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.4.sp,
                             shadow = textShadow
                         ),
-                        color = Color(0xFFE50914), // Stylized red anchor
-                        maxLines = 2,
+                        color = Color.White,
+                        maxLines = if (compact) 1 else 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.height(if (isLargeCard) 10.dp else 6.dp))
-
-                // Metadata Row: ★ 7.3/10  ·  📅 2026  ·  👻 Horror (larger text & icons)
+                Spacer(modifier = Modifier.height(if (compact) 10.dp else 12.dp))
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(if (isLargeCard) 8.dp else 5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    val details = listOf(primaryGenre, year).filter { it.isNotBlank() }.joinToString(" · ")
+                    if (details.isNotBlank()) {
+                        Text(
+                            text = details,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = ArflixTypography.caption.copy(fontSize = 12.sp, lineHeight = 16.sp, shadow = textShadow),
+                            color = Color.White.copy(alpha = 0.8f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     if (ratingString.isNotBlank()) {
-                        Icon(
-                            imageVector = Icons.Filled.Star,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(metadataIconSize)
-                        )
-                        Text(
-                            text = "$ratingString/10",
-                            style = ArflixTypography.caption.copy(
-                                fontSize = metadataFontSize,
-                                fontWeight = FontWeight.SemiBold,
-                                shadow = textShadow
-                            ),
-                            color = Color.White
-                        )
-                    }
-
-                    if (year.isNotBlank()) {
-                        if (ratingString.isNotBlank()) {
-                            Text(
-                                text = "·",
-                                style = ArflixTypography.caption.copy(fontSize = metadataFontSize, shadow = textShadow),
-                                color = Color.White.copy(alpha = 0.6f)
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Filled.DateRange,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(metadataIconSize)
-                        )
-                        Text(
-                            text = year,
-                            style = ArflixTypography.caption.copy(
-                                fontSize = metadataFontSize,
-                                fontWeight = FontWeight.Medium,
-                                shadow = textShadow
-                            ),
-                            color = Color.White.copy(alpha = 0.9f)
-                        )
-                    }
-
-                    if (primaryGenre.isNotBlank()) {
-                        if (ratingString.isNotBlank() || year.isNotBlank()) {
-                            Text(
-                                text = "·",
-                                style = ArflixTypography.caption.copy(fontSize = metadataFontSize, shadow = textShadow),
-                                color = Color.White.copy(alpha = 0.6f)
-                            )
-                        }
-                        Text(
-                            text = "$genreIcon $primaryGenre",
-                            style = ArflixTypography.caption.copy(
-                                fontSize = metadataFontSize,
-                                fontWeight = FontWeight.Medium,
-                                shadow = textShadow
-                            ),
-                            color = Color.White.copy(alpha = 0.9f)
+                        ImdbSvgRatingBadge(
+                            rating = ratingString,
+                            imageLoader = imageLoader,
+                            ratingFontSize = 12,
+                            logoWidth = 30.dp,
+                            logoHeight = 14.dp,
+                            textShadow = textShadow,
                         )
                     }
                 }
 
-                if (cleanOverview.isNotBlank()) {
+                if (!compact && cleanOverview.isNotBlank()) {
                     Spacer(modifier = Modifier.height(if (isLargeCard) 10.dp else 6.dp))
                     Text(
                         text = cleanOverview,
@@ -662,31 +615,5 @@ private fun LandscapeDeckCard(
                 }
             }
         }
-    }
-}
-
-/**
- * Contextual genre emoji mapping for clean metadata row display.
- */
-private fun genreEmojiFor(genre: String): String {
-    val lower = genre.lowercase()
-    return when {
-        lower.contains("horror") -> "👻"
-        lower.contains("action") -> "⚔️"
-        lower.contains("comedy") -> "😂"
-        lower.contains("drama") -> "🎭"
-        lower.contains("sci-fi") || lower.contains("science fiction") -> "🚀"
-        lower.contains("fantasy") -> "✨"
-        lower.contains("animation") || lower.contains("anime") -> "🎨"
-        lower.contains("thriller") || lower.contains("mystery") -> "🔍"
-        lower.contains("crime") -> "🕵️"
-        lower.contains("adventure") -> "🧭"
-        lower.contains("romance") -> "❤️"
-        lower.contains("documentary") -> "📽️"
-        lower.contains("family") || lower.contains("kids") -> "👨‍👩‍👧"
-        lower.contains("music") -> "🎵"
-        lower.contains("war") -> "🪖"
-        lower.contains("western") -> "🤠"
-        else -> "🎬"
     }
 }
