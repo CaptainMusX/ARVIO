@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -84,7 +85,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -831,12 +831,16 @@ fun ArflixApp(
     }
 
     val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
     val barMode = currentAppBottomBarMode()
     val isLandscapeRail = barMode == AppBottomBarMode.LANDSCAPE_RAIL
     val railCutoutInset = with(density) {
         navigationRailCutoutInsetPx(
-            WindowInsets.systemBars.getLeft(this, LayoutDirection.Ltr),
-            WindowInsets.displayCutout.getLeft(this, LayoutDirection.Ltr),
+            systemLeftInsetPx = WindowInsets.systemBars.getLeft(this, layoutDirection),
+            cutoutLeftInsetPx = WindowInsets.displayCutout.getLeft(this, layoutDirection),
+            systemRightInsetPx = WindowInsets.systemBars.getRight(this, layoutDirection),
+            cutoutRightInsetPx = WindowInsets.displayCutout.getRight(this, layoutDirection),
+            layoutDirection = layoutDirection,
         ).toDp()
     }
     val barSpec = currentBottomBarSpec()

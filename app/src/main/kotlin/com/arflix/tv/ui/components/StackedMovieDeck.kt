@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -62,6 +63,7 @@ import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Precision
+import coil.size.Scale
 import com.arflix.tv.data.model.MediaItem
 import com.arflix.tv.data.model.MediaType
 import com.arflix.tv.ui.theme.ArflixTypography
@@ -112,37 +114,43 @@ fun StackedMovieDeck(
 
         val context = LocalContext.current
         val imageLoader = remember(context) { context.imageLoader }
+        val artworkSizes = remember(layout, density.density) {
+            landscapeDeckArtworkSizes(layout, density.density)
+        }
 
-        // Preload / preheat Coil images for visible cards around currentIndex
-        LaunchedEffect(currentIndex, items, cardLogoUrls) {
-            if (items.isEmpty()) return@LaunchedEffect
-            val preloadOffsets = listOf(-2, -1, 0, 1, 2, 3)
-            for (rel in preloadOffsets) {
-                val rawIdx = (currentIndex + rel) % items.size
-                val idx = if (rawIdx < 0) rawIdx + items.size else rawIdx
-                val itm = items.getOrNull(idx) ?: continue
-                val bdUrl = itm.backdrop ?: itm.image
-                if (!bdUrl.isNullOrBlank()) {
-                    imageLoader.enqueue(
-                        ImageRequest.Builder(context)
-                            .data(bdUrl)
-                            .precision(Precision.INEXACT)
-                            .allowHardware(true)
-                            .build()
-                    )
-                }
-                val lgUrl = cardLogoUrls["${itm.mediaType}_${itm.id}"]
-                    ?: cardLogoUrls["${itm.mediaType.name.lowercase()}_${itm.id}"]
-                if (!lgUrl.isNullOrBlank()) {
-                    imageLoader.enqueue(
-                        ImageRequest.Builder(context)
-                            .data(lgUrl)
-                            .precision(Precision.INEXACT)
-                            .allowHardware(true)
-                            .build()
-                    )
+        // Match the rendered request sizes; cancel obsolete prefetches on resize, advance or exit.
+        DisposableEffect(currentIndex, items, cardLogoUrls, artworkSizes, imageLoader) {
+            val requests = buildList {
+                for (idx in landscapeDeckPrefetchIndices(currentIndex, items.size)) {
+                    val itm = items[idx]
+                    landscapeDeckArtworkUrl(itm)?.let { bdUrl ->
+                        add(
+                            ImageRequest.Builder(context)
+                                .data(bdUrl)
+                                .size(artworkSizes.backdrop.width, artworkSizes.backdrop.height)
+                                .scale(Scale.FILL)
+                                .precision(Precision.INEXACT)
+                                .allowHardware(true)
+                                .build()
+                        )
+                    }
+                    val lgUrl = cardLogoUrls["${itm.mediaType}_${itm.id}"]
+                        ?: cardLogoUrls["${itm.mediaType.name.lowercase()}_${itm.id}"]
+                    if (!lgUrl.isNullOrBlank()) {
+                        add(
+                            ImageRequest.Builder(context)
+                                .data(lgUrl)
+                                .size(artworkSizes.logo.width, artworkSizes.logo.height)
+                                .scale(Scale.FIT)
+                                .precision(Precision.INEXACT)
+                                .allowHardware(true)
+                                .build()
+                        )
+                    }
                 }
             }
+            val pending = requests.map(imageLoader::enqueue)
+            onDispose { pending.forEach { it.dispose() } }
         }
 
         // Resizing invalidates pixel-based drag positions and auto-advance targets.
@@ -297,6 +305,7 @@ fun StackedMovieDeck(
                         contentAlpha = card.contentAlpha,
                         scrimAlpha = card.scrimAlpha,
                         cardWidth = centerCardWidth,
+                        artworkSizes = artworkSizes,
                         scale = card.scale,
                         translationX = card.translationX,
                         alpha = card.cardAlpha,
@@ -366,6 +375,7 @@ private fun LandscapeDeckCard(
     contentAlpha: Float,
     scrimAlpha: Float,
     cardWidth: Dp,
+    artworkSizes: LandscapeDeckArtworkSizes,
     scale: Float,
     translationX: Float,
     alpha: Float,
@@ -377,7 +387,7 @@ private fun LandscapeDeckCard(
     onCardClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val backdropUrl = item.backdrop ?: item.image
+    val backdropUrl = landscapeDeckArtworkUrl(item)
     val isFront = absPos < 0.5f
 
     val logoUrl = remember(item.id, item.mediaType, cardLogoUrls) {
@@ -469,10 +479,12 @@ private fun LandscapeDeckCard(
             )
     ) {
         // ── 1. Full-bleed Landscape Backdrop Image ───────────────────────────
-        if (backdropUrl.isNotBlank()) {
+        if (backdropUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(backdropUrl)
+                    .size(artworkSizes.backdrop.width, artworkSizes.backdrop.height)
+                    .scale(Scale.FILL)
                     .precision(Precision.INEXACT)
                     .allowHardware(true)
                     .crossfade(150)
@@ -542,6 +554,8 @@ private fun LandscapeDeckCard(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(logoUrl)
+                            .size(artworkSizes.logo.width, artworkSizes.logo.height)
+                            .scale(Scale.FIT)
                             .precision(Precision.INEXACT)
                             .allowHardware(true)
                             .crossfade(false)

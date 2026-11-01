@@ -14,12 +14,24 @@ class AppBottomBarResponsiveLayoutTest {
         )
         val density = Density(1f)
         assertThat(insets.getLeft(density, LayoutDirection.Ltr)).isEqualTo(0)
-        assertThat(navigationRailCutoutInsetPx(0, 44)).isEqualTo(44)
-        assertThat(navigationRailCutoutInsetPx(24, 44)).isEqualTo(20)
-        assertThat(navigationRailCutoutInsetPx(44, 44)).isEqualTo(0)
-        assertThat(navigationRailCutoutInsetPx(44, 0)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(0, 44, 0, 0, LayoutDirection.Ltr)).isEqualTo(44)
+        assertThat(navigationRailCutoutInsetPx(24, 44, 0, 0, LayoutDirection.Ltr)).isEqualTo(20)
+        assertThat(navigationRailCutoutInsetPx(44, 44, 0, 0, LayoutDirection.Ltr)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(44, 0, 0, 0, LayoutDirection.Ltr)).isEqualTo(0)
         assertThat(insets.getTop(density)).isEqualTo(24)
         assertThat(insets.getBottom(density)).isEqualTo(0)
+    }
+
+    @Test fun rtlRailUsesRightCutoutAndSubtractsConsumedRightSystemInset() {
+        assertThat(navigationRailCutoutInsetPx(0, 0, 0, 44, LayoutDirection.Rtl)).isEqualTo(44)
+        assertThat(navigationRailCutoutInsetPx(0, 0, 24, 44, LayoutDirection.Rtl)).isEqualTo(20)
+        assertThat(navigationRailCutoutInsetPx(0, 0, 44, 44, LayoutDirection.Rtl)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(0, 0, 48, 0, LayoutDirection.Rtl)).isEqualTo(0)
+    }
+
+    @Test fun cutoutOnOppositeEdgeDoesNotMoveRail() {
+        assertThat(navigationRailCutoutInsetPx(0, 0, 0, 44, LayoutDirection.Ltr)).isEqualTo(0)
+        assertThat(navigationRailCutoutInsetPx(0, 44, 0, 0, LayoutDirection.Rtl)).isEqualTo(0)
     }
 
     @Test fun subscreenFlagsOnlyAffectTheirOwnDestination() {

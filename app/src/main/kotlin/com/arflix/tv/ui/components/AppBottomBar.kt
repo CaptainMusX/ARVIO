@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.annotation.StringRes
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -154,8 +155,17 @@ internal fun appBottomBarClearance(
 }
 
 /** Only interactive navigation avoids a side cutout; full-width screens may draw beneath it. */
-internal fun navigationRailCutoutInsetPx(systemLeftInsetPx: Int, cutoutLeftInsetPx: Int): Int =
-    (cutoutLeftInsetPx - systemLeftInsetPx).coerceAtLeast(0)
+internal fun navigationRailCutoutInsetPx(
+    systemLeftInsetPx: Int,
+    cutoutLeftInsetPx: Int,
+    systemRightInsetPx: Int,
+    cutoutRightInsetPx: Int,
+    layoutDirection: LayoutDirection,
+): Int {
+    val systemStart = if (layoutDirection == LayoutDirection.Ltr) systemLeftInsetPx else systemRightInsetPx
+    val cutoutStart = if (layoutDirection == LayoutDirection.Ltr) cutoutLeftInsetPx else cutoutRightInsetPx
+    return (cutoutStart - systemStart).coerceAtLeast(0)
+}
 
 internal fun mobileContentInsets(systemBars: WindowInsets, showBottomBar: Boolean = false): WindowInsets =
     systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
