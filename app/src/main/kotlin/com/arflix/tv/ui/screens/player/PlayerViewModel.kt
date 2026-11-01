@@ -7778,11 +7778,41 @@ class PlayerViewModel @Inject constructor(
         )
     }
 
+    /** Set by [refetchSameSourceFresh]: the source to pick again from a freshly fetched list. */
+    private var refetchRecent: RecentPlayedSource? = null
+    private var refetchedSourceKey: String? = null
+
+    /**
+     * The selected source failed before its first frame with a network / HTTP error — typically an
+     * expired link from a source list saved before the app was closed. Re-fetches the source list
+     * (bypassing the resolved-link cache) and autoplays the same source, matched by torrent hash /
+     * file name / title and never by the stale URL, resuming at the same position. Once per source.
+     */
+    fun refetchSameSourceFresh(): Boolean {
+        val stream = _uiState.value.selectedStream ?: return false
+        val key = "$currentMediaType:$currentMediaId:$currentSeason:$currentEpisode:${stream.addonId}:${stream.infoHash ?: stream.source}"
+        if (key == refetchedSourceKey) return false // already re-fetched once: let failover proceed
+        refetchedSourceKey = key
+        streamRepository.forgetResolvedStream(stream)
+        refetchRecent = RecentPlayedSource.of(
+            currentMediaType, currentMediaId, currentSeason, currentEpisode, stream, System.currentTimeMillis()
+        ).copy(url = null)
+        Log.i("PlayerViewModel", "re-fetching sources to replay \"${stream.source.take(60)}\" with a fresh link")
+        reloadStreams()
+        return true
+    }
+
     private fun loadRecentSource(mediaType: MediaType, mediaId: Int, season: Int?, episode: Int?) {
         recentSourcePlayTracker.reset()
         recentSourceGate.disarm()
         preparedStream = null
         listedSelectedStream = null
+        val forced = refetchRecent?.takeIf { it.appliesTo(mediaType, mediaId, season, episode) }
+        refetchRecent = null
+        if (forced != null) {
+            recentSourceLoad = kotlinx.coroutines.CompletableDeferred(forced)
+            return
+        }
         recentSourceLoad = viewModelScope.async {
             val recent = recentPlayedSourceRepository.get(mediaType, mediaId, season, episode)
             val stillCurrent = currentMediaType == mediaType && currentMediaId == mediaId &&
