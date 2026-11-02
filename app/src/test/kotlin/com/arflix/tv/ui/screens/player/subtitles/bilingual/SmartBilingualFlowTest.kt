@@ -143,17 +143,18 @@ class SmartBilingualFlowTest {
     }
 
     @Test fun `changing the target language isolates cache and drops in-flight results`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<Unit>()
         val service = mockk<SubtitleTranslationService>()
         coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
             val lang = secondArg<String>()
-            if (lang == "Simplified Chinese") gate.await()
+            if (lang == "Simplified Chinese") { started.complete(Unit); gate.await() }
             TranslationResult(firstArg<List<String>>().map { "[$lang]$it" }, true)
         }
         val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope).apply { isEnabled = true }
         val publisher = BilingualCuePublisher(manager, scope)
         publisher.publish("Good night.", 0)
-        delay(300) // request for Simplified Chinese is now in flight
+        withTimeout(5_000) { started.await() } // deterministically wait for the actual network boundary
         manager.targetLanguage = "Japanese"            // user switches the secondary language
         // No flicker: the primary line stays, its old-language translation slot is invalidated.
         assertEquals("Good night.", manager.bilingualBus.frame.value!!.original)
@@ -164,10 +165,10 @@ class SmartBilingualFlowTest {
         assertEquals("[Japanese]Good night.", manager.bilingualBus.frame.value!!.translation)
         delay(300)
         assertEquals("[Japanese]Good night.", manager.bilingualBus.frame.value!!.translation)
-        // Each language has its own cache entry.
+        // Successful current-language work is cached; cancelled old work never writes a cache entry.
         assertEquals("[Japanese]Good night.", manager.getCached("Good night."))
         manager.targetLanguage = "Simplified Chinese"
-        assertEquals("[Simplified Chinese]Good night.", manager.getCached("Good night."))
+        assertNull(manager.getCached("Good night."))
     }
 
     @Test fun `switching source or episode mid-translation never shows the old line`() = runBlocking {
@@ -224,15 +225,17 @@ class SmartBilingualFlowTest {
     }
 
     @Test fun `switching generation path keeps the primary line on screen and drops stale results`() = runBlocking {
+        val started = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<Unit>()
         val service = mockk<SubtitleTranslationService>()
         coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
+            started.complete(Unit)
             gate.await(); TranslationResult(firstArg<List<String>>().map { "译:$it" }, true)
         }
         val manager = SubtitleTranslationManager(service, "Simplified Chinese", scope).apply { isEnabled = true }
         val publisher = BilingualCuePublisher(manager, scope)
         publisher.publish("EN line 1", spanOf(1).first * 1000)       // Auto → AI (path B) in flight
-        delay(200)
+        withTimeout(5_000) { started.await() }
         // Auto re-plans to path A (the Chinese track became readable) — or the user picks Merge.
         manager.bilingualSource = SubtitleTranslationManager.BilingualSource.EMBEDDED_TRACK
         manager.secondarySource = DualTrackSecondarySource(storeWithEnglishAndChinese(), 3, 4)

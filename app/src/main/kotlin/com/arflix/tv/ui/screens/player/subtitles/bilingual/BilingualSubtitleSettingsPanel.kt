@@ -113,7 +113,10 @@ fun BilingualSubtitleSettingsPanel(
         ToggleLine(
             label = bt("Bilingual subtitles on"),
             checked = settings.smartEnabled,
-            onToggle = { on -> store.update { it.copy(smartEnabled = on) } }
+            onToggle = { on ->
+                store.update { it.copy(smartEnabled = on) }
+                if (on) BilingualPlayerBridge.requestSmartMode() else BilingualPlayerBridge.stopSmartMode()
+            }
         )
         Text(
             bt("Shows two languages at once using the Generation mode below. Off = ARVIO's normal subtitles (a subtitle you pick from the normal list is always respected). Display mode further down is separate: it only decides which of the two lines are shown."),
@@ -526,8 +529,14 @@ private fun previewLine(lang: SubtitleLanguage): String = when {
 
 /** Player-side requests from the settings panel (decoupled: the panel is also used outside the player). */
 object BilingualPlayerBridge {
-    val requests = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    fun requestSmartMode() { requests.tryEmit(Unit) }
+    enum class Command { START, STOP }
+    val requests = kotlinx.coroutines.flow.MutableSharedFlow<Command>(extraBufferCapacity = 8)
+    fun requestSmartMode() { requests.tryEmit(Command.START) }
+    fun stopSmartMode() {
+        primaryOverride.value = null
+        secondaryOverride.value = null
+        requests.tryEmit(Command.STOP)
+    }
 
     /** A text subtitle track of the playing video the user can assign to a role. */
     data class TrackChoice(val id: String, val label: String, val mergeable: Boolean)
