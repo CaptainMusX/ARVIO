@@ -70,7 +70,7 @@ class BilingualSettingsStoreTest {
 
         // Another profile has its own (default) settings.
         val store3 = BilingualSubtitleSettingsStore(ds2, MutableStateFlow("p2"), scope2)
-        assertEquals(BilingualSubtitleSettings.DEFAULT, store3.readPersisted())
+        assertEquals(BilingualSubtitleSettings.DEFAULT, store3.readPersisted().copy(legacyAppearance = null))
         scope2.cancel()
     }
 }

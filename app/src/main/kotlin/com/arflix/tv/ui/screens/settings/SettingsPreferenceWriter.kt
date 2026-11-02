@@ -2,6 +2,7 @@ package com.arflix.tv.ui.screens.settings
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,8 @@ internal class SettingsPreferenceWriter(
         key: Preferences.Key<T>, value: T,
         read: (SettingsUiState) -> T,
         write: (SettingsUiState, T) -> SettingsUiState,
+        /** Numeric aliases must commit/roll back atomically with their named preset. */
+        editRelated: (MutablePreferences) -> Unit = {},
         sync: Boolean = true,
         afterSave: suspend () -> Unit = onSaved
     ) {
@@ -55,7 +58,7 @@ internal class SettingsPreferenceWriter(
                 try {
                     // Leaving Settings immediately must not discard an acknowledged edit.
                     withContext(NonCancellable) {
-                        store.edit { it[key] = value }
+                        store.edit { it[key] = value; editRelated(it) }
                         entry.rollback = { write(it, value) }
                         entry.committed = true
                         if (sync) onCommitted()

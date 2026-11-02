@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,7 +43,36 @@ class SettingsPreferenceWriterTest {
         val key = stringPreferencesKey("profile_a_subtitle_size")
         val writer = SettingsPreferenceWriter(store, state, scope, { profile }, { synced++ }, { failed++ }, onCommitted = { committed++ })
         fun size(value: String, sync: Boolean = true, afterSave: suspend () -> Unit = { synced++ }) =
-            writer.save(key, value, { it.subtitleSize }, { s, v -> s.copy(subtitleSize = v) }, sync, afterSave)
+            writer.save(key, value, { it.subtitleSize }, { s, v -> s.copy(subtitleSize = v) }, sync = sync, afterSave = afterSave)
+    }
+
+    @Test fun namedAndNumericAliasesCommitTogetherInOneEdit() = runTest {
+        val f = Fixture(this)
+        val numeric = intPreferencesKey("profile_a_subtitle_size_pct")
+        f.writer.save(f.key, "Large", { it.subtitleSize }, { s, v -> s.copy(subtitleSize = v) },
+            editRelated = { it[numeric] = 120 })
+        runCurrent()
+        assertNull(f.store.data.value[f.key])
+        assertNull(f.store.data.value[numeric])
+        assertEquals(1, f.store.gates.size)
+        f.store.finish()
+        advanceUntilIdle()
+        assertEquals("Large", f.store.data.value[f.key])
+        assertEquals(120, f.store.data.value[numeric])
+    }
+
+    @Test fun failedAliasEditCannotLeaveOnlyTheNamedOrOnlyTheNumericValue() = runTest {
+        val f = Fixture(this)
+        val numeric = intPreferencesKey("profile_a_subtitle_size_pct")
+        f.writer.save(f.key, "Large", { it.subtitleSize }, { s, v -> s.copy(subtitleSize = v) },
+            editRelated = { it[numeric] = 120 })
+        runCurrent()
+        f.store.finish(false)
+        advanceUntilIdle()
+        assertEquals("Small", f.state.value.subtitleSize)
+        assertNull(f.store.data.value[f.key])
+        assertNull(f.store.data.value[numeric])
+        assertEquals(1, f.failed)
     }
 
     @Test fun feedbackDoesNotWaitForDiskOrCloud() = runTest {

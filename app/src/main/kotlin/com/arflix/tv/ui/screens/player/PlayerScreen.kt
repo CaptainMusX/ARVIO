@@ -711,6 +711,16 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
     LaunchedEffect(uiState.subtitleVerticalPct) {
         subtitleVerticalPct = uiState.subtitleVerticalPct
     }
+    // Use one path for D-pad, TV buttons and touch controls: update the visible overlay now,
+    // then persist the same clamped value for ordinary subtitles and the next playback session.
+    val updateSubtitleSize: (Int) -> Unit = { percent ->
+        subtitleSizePct = percent.coerceIn(50, 250)
+        viewModel.setSubtitleSizePct(subtitleSizePct)
+    }
+    val updateSubtitleVertical: (Int) -> Unit = { percent ->
+        subtitleVerticalPct = percent.coerceIn(1, 88)
+        viewModel.setSubtitleVerticalPct(subtitleVerticalPct)
+    }
     var useVideoFrameSubtitleViewport by remember { mutableStateOf(false) }
     var hasActiveSubtitleCues by remember { mutableStateOf(false) }
     val subtitleGroups = remember(uiState.subtitles, uiState.preferredSubtitleLang, uiState.secondarySubtitleLang, uiState.selectedStream, uiState.isAiAvailable, uiState.aiTargetLanguageName) {
@@ -3815,16 +3825,16 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                             Key.DirectionLeft -> {
                                 when (subtitleSettingsRow) {
                                     0 -> subtitleSyncOffsetMs = (subtitleSyncOffsetMs - SUBTITLE_OFFSET_STEP_MS).coerceAtLeast(-MAX_SUBTITLE_OFFSET_MS)
-                                    1 -> subtitleSizePct = (subtitleSizePct - 10).coerceAtLeast(50)
-                                    2 -> subtitleVerticalPct = (subtitleVerticalPct - 1).coerceAtLeast(0)
+                                    1 -> updateSubtitleSize(subtitleSizePct - 10)
+                                    2 -> updateSubtitleVertical(subtitleVerticalPct - 1)
                                 }
                                 true
                             }
                             Key.DirectionRight -> {
                                 when (subtitleSettingsRow) {
                                     0 -> subtitleSyncOffsetMs = (subtitleSyncOffsetMs + SUBTITLE_OFFSET_STEP_MS).coerceAtMost(MAX_SUBTITLE_OFFSET_MS)
-                                    1 -> subtitleSizePct = (subtitleSizePct + 10).coerceAtMost(300)
-                                    2 -> subtitleVerticalPct = (subtitleVerticalPct + 1).coerceAtMost(50)
+                                    1 -> updateSubtitleSize(subtitleSizePct + 10)
+                                    2 -> updateSubtitleVertical(subtitleVerticalPct + 1)
                                 }
                                 true
                             }
@@ -4180,7 +4190,17 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                 aiActive = uiState.isAiTranslating || uiState.smartBilingualActive,
                 hidden = false,
                 isInPictureInPicture = isInPipMode,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                legacyAppearance = com.arflix.tv.ui.screens.player.subtitles.bilingual.LegacySubtitleAppearance(
+                    size = subtitleSizePref,
+                    sizePercent = subtitleSizePct,
+                    color = subtitleColorPref,
+                    position = subtitleOffsetPref,
+                    verticalPercent = subtitleVerticalPct,
+                    style = subtitleStylePref,
+                    font = subtitleFontPref,
+                    stylized = subtitleStylizedPref,
+                ),
             )
         }
 
@@ -4515,17 +4535,11 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     subtitleSyncOffsetMs = delayMs
                 },
                 subtitleSizePct = subtitleSizePct,
-                onUpdateSubtitleSize = { sizePct ->
-                    val clamped = sizePct.coerceIn(50, 250)
-                    subtitleSizePct = clamped
-                    viewModel.setSubtitleSizePct(clamped)
-                },
+                onUpdateSubtitleSize = updateSubtitleSize,
                 subtitleVerticalPct = subtitleVerticalPct,
-                hasActiveSubtitleCues = hasActiveSubtitleCues,
-                onUpdateSubtitleVerticalPosition = { vertPct ->
-                    subtitleVerticalPct = vertPct
-                    viewModel.setSubtitleVerticalPct(vertPct)
-                },
+                // AI rendering deliberately emits empty Media3 cues; it still has visible text.
+                hasActiveSubtitleCues = hasActiveSubtitleCues || uiState.isAiTranslating || uiState.smartBilingualActive,
+                onUpdateSubtitleVerticalPosition = updateSubtitleVertical,
                 onUpdateSubtitlePreload = { enabled ->
                     viewModel.setSubtitlePreloadEnabled(enabled)
                 },
@@ -4544,7 +4558,9 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     })
                 },
                 onUpdateSubtitlePosition = { pos ->
-                    viewModel.setSubtitleOffsetPref(if (pos == "top") "High" else "Bottom")
+                    // Write numeric and named preferences together; a stale numeric value must
+                    // not silently override the user's new top/bottom choice after a restart.
+                    updateSubtitleVertical(if (pos == "top") 88 else 2)
                 },
                 onUpdateSubtitleStyle = { style ->
                     viewModel.setSubtitleStylePref(style)
@@ -5116,10 +5132,10 @@ private fun PlayerScreenContent(args: PlayerScreenArgs, viewModel: PlayerViewMod
                     onRowSelect = { subtitleSettingsRow = it },
                     onOffsetDecrease = { subtitleSyncOffsetMs = (subtitleSyncOffsetMs - SUBTITLE_OFFSET_STEP_MS).coerceAtLeast(-MAX_SUBTITLE_OFFSET_MS) },
                     onOffsetIncrease = { subtitleSyncOffsetMs = (subtitleSyncOffsetMs + SUBTITLE_OFFSET_STEP_MS).coerceAtMost(MAX_SUBTITLE_OFFSET_MS) },
-                    onSizeDecrease = { subtitleSizePct = (subtitleSizePct - 10).coerceAtLeast(50) },
-                    onSizeIncrease = { subtitleSizePct = (subtitleSizePct + 10).coerceAtMost(300) },
-                    onVerticalDecrease = { subtitleVerticalPct = (subtitleVerticalPct - 1).coerceAtLeast(0) },
-                    onVerticalIncrease = { subtitleVerticalPct = (subtitleVerticalPct + 1).coerceAtMost(50) }
+                    onSizeDecrease = { updateSubtitleSize(subtitleSizePct - 10) },
+                    onSizeIncrease = { updateSubtitleSize(subtitleSizePct + 10) },
+                    onVerticalDecrease = { updateSubtitleVertical(subtitleVerticalPct - 1) },
+                    onVerticalIncrease = { updateSubtitleVertical(subtitleVerticalPct + 1) }
                 )
             }
 

@@ -81,7 +81,8 @@ data class BilingualLineStyle(
 
     companion object {
         const val MIN_SIZE_SP = 10
-        const val MAX_SIZE_SP = 48
+        // Legacy SubtitleView supports 24sp at up to 250%.
+        const val MAX_SIZE_SP = 60
         const val MAX_OFFSET_DP = 120
     }
 }
@@ -111,6 +112,8 @@ data class BilingualSubtitleSettings(
     val primaryLanguage: String = SubtitleLanguage.AUTO,
     /** BCP 47 tag of the second language, default Simplified Chinese. */
     val secondaryLanguage: String = DEFAULT_SECONDARY_LANGUAGE,
+    /** Legacy values already accounted for in the stored styles; null on pre-migration JSON. */
+    val legacyAppearance: LegacySubtitleAppearance? = null,
 ) {
     /** Resolved secondary language (never null). */
     val secondary: SubtitleLanguage
@@ -131,7 +134,7 @@ data class BilingualSubtitleSettings(
     companion object {
         const val DEFAULT_SECONDARY_LANGUAGE = "zh-Hans"
         const val MAX_GAP_DP = 48
-        const val MAX_BOTTOM_PERCENT = 60
+        const val MAX_BOTTOM_PERCENT = 88
 
         val DEFAULT_ORIGINAL = BilingualLineStyle(
             colorHex = "#FFFFFF",
@@ -164,12 +167,15 @@ object BilingualSettingsCodec {
     fun encode(settings: BilingualSubtitleSettings): String =
         json.encodeToString(BilingualSubtitleSettings.serializer(), settings.sanitized())
 
-    fun decode(raw: String?): BilingualSubtitleSettings {
-        if (raw.isNullOrBlank()) return BilingualSubtitleSettings.DEFAULT
+    fun decode(raw: String?): BilingualSubtitleSettings = decodeOrNull(raw) ?: BilingualSubtitleSettings.DEFAULT
+
+    /** Distinguish an existing bilingual configuration from an absent/corrupt one during migration. */
+    fun decodeOrNull(raw: String?): BilingualSubtitleSettings? {
+        if (raw.isNullOrBlank()) return null
         return try {
             json.decodeFromString(BilingualSubtitleSettings.serializer(), raw).sanitized()
         } catch (_: Exception) {
-            BilingualSubtitleSettings.DEFAULT
+            null
         }
     }
 }

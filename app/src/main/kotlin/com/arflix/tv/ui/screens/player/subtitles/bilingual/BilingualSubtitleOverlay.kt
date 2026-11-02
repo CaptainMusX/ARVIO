@@ -48,10 +48,13 @@ fun BilingualSubtitleOverlay(
     hidden: Boolean,
     isInPictureInPicture: Boolean,
     modifier: Modifier = Modifier,
+    /** Player-local values make TV +/- controls live before the DataStore write completes. */
+    legacyAppearance: LegacySubtitleAppearance? = null,
 ) {
     val context = LocalContext.current
     val store = remember { BilingualSubtitleSettingsStore.from(context) }
-    val settings by store.settings.collectAsState()
+    val storedSettings by store.settings.collectAsState()
+    val settings = legacyAppearance?.resolve(storedSettings) ?: storedSettings
     val frame by manager.bilingualBus.frame.collectAsState()
 
     // Keep the renderer in step with the chosen mode ("Original only"/"Off" stop API calls).
