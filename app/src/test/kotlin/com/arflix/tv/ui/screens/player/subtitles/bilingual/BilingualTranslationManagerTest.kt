@@ -6,6 +6,7 @@ import com.arflix.tv.ui.screens.player.subtitles.TranslationResult
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,8 +39,14 @@ class BilingualTranslationManagerTest {
             TranslationResult(lines = firstArg<List<String>>().map { "译:$it" }, success = true)
         }
         val m = manager(service)
+        // Use real competing threads: async on runBlocking alone never races the atomic claim.
+        val start = CompletableDeferred<Unit>()
         val results = withTimeout(5_000) {
-            (1..5).map { async { m.translateDetailed("Hello.") } }.awaitAll()
+            val requests = (1..32).map {
+                async(Dispatchers.Default) { start.await(); m.translateDetailed("Hello.") }
+            }
+            start.complete(Unit)
+            requests.awaitAll()
         }
         assertTrue(results.all { it == ("译:Hello." to true) })
         coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) }
@@ -47,6 +54,31 @@ class BilingualTranslationManagerTest {
         // Cached now: no further call.
         m.translateDetailed("Hello.")
         coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) }
+    }
+
+    @Test fun `lookahead and live cues atomically share the same claims`() = runBlocking {
+        val service = mockk<SubtitleTranslationService>()
+        coEvery { service.translateBatch(any(), any(), any(), any()) } coAnswers {
+            delay(100)
+            TranslationResult(firstArg<List<String>>().map { "译:$it" }, true)
+        }
+        val m = manager(service)
+        val start = CompletableDeferred<Unit>()
+        val lines = (1..50).map { "Line $it." }
+        withTimeout(5_000) {
+            val requests = (1..16).map { index ->
+                async(Dispatchers.Default) {
+                    start.await()
+                    if (index % 2 == 0) m.preTranslateWindow(lines)
+                    else assertEquals("译:Line 1." to true, m.translateDetailed("Line 1."))
+                }
+            }
+            start.complete(Unit)
+            requests.awaitAll()
+        }
+        coVerify(exactly = 1) { service.translateBatch(any(), any(), any(), any()) }
+        assertEquals(50, m.translatedCount)
+        assertFalse(m.isInFlight("Line 1."))
     }
 
     @Test fun `api failure reports failed and does not cache`() = runBlocking {

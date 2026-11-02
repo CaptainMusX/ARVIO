@@ -1,21 +1,27 @@
 package com.arflix.tv.ui.screens.player.subtitles
 
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.CancellationException
 
 class SubtitleTranslationManager(
     private var service: SubtitleTranslationService,
     targetLanguage: String,
     private val scope: CoroutineScope
 ) {
+    // Serialises mode changes, claims and result publication; never held across a suspension.
+    private val lifecycleLock = Any()
+
     /**
      * Language the AI translates into (a name, e.g. "Simplified Chinese"). Cached translations
      * are keyed by it, so switching languages never shows a line translated for the old one, and
@@ -23,10 +29,11 @@ class SubtitleTranslationManager(
      */
     @Volatile
     internal var targetLanguage: String = targetLanguage
-        set(value) {
+        set(value) = synchronized(lifecycleLock) {
             if (field != value) {
                 field = value
                 bilingualBus.resetSecondary()
+                invalidateWorkLocked()
             }
         }
     companion object {
@@ -41,10 +48,14 @@ class SubtitleTranslationManager(
         const val CHUNK_LINES = 50
     }
 
+    @Volatile
     var isEnabled: Boolean = false
-        set(value) {
-            if (field != value) bilingualBus.clear()
-            field = value
+        set(value) = synchronized(lifecycleLock) {
+            if (field != value) {
+                field = value
+                bilingualBus.clear()
+                invalidateWorkLocked()
+            }
         }
 
     // ── Bilingual subtitles ─────────────────────────────────────────────────
@@ -59,6 +70,15 @@ class SubtitleTranslationManager(
     @Volatile
     var displayMode: com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode =
         com.arflix.tv.ui.screens.player.subtitles.bilingual.BilingualDisplayMode.BILINGUAL
+        set(value) = synchronized(lifecycleLock) {
+            if (field != value) {
+                field = value
+                if (!value.needsTranslation) {
+                    bilingualBus.resetSecondary()
+                    invalidateWorkLocked()
+                }
+            }
+        }
 
     /**
      * Where the second language comes from while the bilingual layer is active:
@@ -69,9 +89,12 @@ class SubtitleTranslationManager(
 
     @Volatile
     var bilingualSource: BilingualSource = BilingualSource.AI_TRANSLATION
-        set(value) {
-            if (field != value) bilingualBus.resetSecondary()
-            field = value
+        set(value) = synchronized(lifecycleLock) {
+            if (field != value) {
+                field = value
+                bilingualBus.resetSecondary()
+                invalidateWorkLocked()
+            }
         }
 
     /** Path A's secondary-line provider (null = primary only). */
@@ -98,10 +121,13 @@ class SubtitleTranslationManager(
      * On failure the existing queue completes with the source text and does not cache it.
      */
     suspend fun translateDetailed(text: String): Pair<String, Boolean> {
-        val lang = targetLanguage
-        val result = translate(text, lang)
-        val ok = cached(cacheKey(lang, text)) != null
-        return result to ok
+        val (owner, pending) = synchronized(lifecycleLock) {
+            if (!translationNeeded) return text to false
+            val owner = session
+            owner to claimLocked(owner, text)
+        }
+        val result = pending.await()
+        return synchronized(lifecycleLock) { if (isCurrent(owner)) result else text to false }
     }
 
     private fun cacheKey(lang: String, text: String): String = lang + '\u0001' + text
@@ -158,20 +184,23 @@ class SubtitleTranslationManager(
     /** Memory first, then the persistent cache (promoted into memory). */
     private fun cached(key: String): String? =
         cache[key] ?: diskCache?.get(key)?.also { cache[key] = it }
-    // Tracks texts currently queued but not yet translated, to avoid double-queuing the same text
-    // from both the real-time path and preTranslateWindow racing on the same cue.
-    private val inFlight = ConcurrentHashMap<String, CompletableDeferred<String>>()
-    private val pendingCount = AtomicInteger(0)
-    private var hideTranslatingJob: Job? = null
 
-    private data class PendingItem(val text: String, val lang: String, val deferred: CompletableDeferred<String>)
-    private val queue = Channel<PendingItem>(Channel.UNLIMITED)
+    private data class PendingItem(
+        val text: String,
+        val lang: String,
+        val deferred: CompletableDeferred<Pair<String, Boolean>> = CompletableDeferred(),
+    )
 
-    init {
-        if (!MOCK_MODE) {
-            scope.launch { processBatches() }
-        }
+    /** A fresh queue/worker per lifecycle, so cancellation never strands a newer request. */
+    private class TranslationSession {
+        val queue = Channel<PendingItem>(Channel.UNLIMITED)
+        var worker: Job? = null
     }
+
+    private var session = TranslationSession()
+    // Accessed only under lifecycleLock. Both live cues and lookahead atomically join these claims.
+    private val inFlight = HashMap<String, PendingItem>()
+    private var hideTranslatingJob: Job? = null
 
     fun updateService(
         apiKey: String,
@@ -185,156 +214,153 @@ class SubtitleTranslationManager(
         )
     }
 
-    private suspend fun processBatches() {
-        val batch = mutableListOf<PendingItem>()
-        while (true) {
-            // Block until the first item is available
-            val first = queue.receive()
-            batch.add(first)
+    private fun isCurrent(owner: TranslationSession): Boolean = session === owner && translationNeeded
 
-            // Collect any additional items that arrive within BATCH_WINDOW_MS.
-            // This handles burst cache misses (e.g., right after a seek) efficiently.
-            val deadline = System.currentTimeMillis() + BATCH_WINDOW_MS
-            while (batch.size < 40) {
-                val remaining = deadline - System.currentTimeMillis()
-                if (remaining <= 0L) break
-                val next = withTimeoutOrNull(remaining) { queue.receive() } ?: break
-                batch.add(next)
-            }
-
-            // One API request per target language (a language switch mid-batch is rare).
-            val lang = batch.first().lang
-            val sameLang = batch.filter { it.lang == lang }
-            batch.filter { it.lang != lang }.forEach { queue.trySend(it) }
-            batch.retainAll(sameLang)
-            val texts = batch.map { it.text }
-            val result = try {
-                service.translateBatch(texts, lang, contextFor(texts, lang), contentTitle)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                TranslationResult(
-                    lines = emptyList(),
-                    success = false,
-                    errorMessage = e.message ?: "Translation error"
-                )
-            }
-            if (!result.success) {
-                onBatchResult?.invoke(false, result.errorMessage)
-                // On error: complete deferreds with original text so the caller doesn't hang,
-                // but do NOT cache — the next render will retry rather than permanently show English.
-                batch.forEachIndexed { i, item ->
-                    inFlight.remove(cacheKey(item.lang, item.text))
-                    item.deferred.complete(item.text)
-                }
-                batch.clear()
-                delay(5_000L)
-                continue
-            }
-            onBatchResult?.invoke(true, null)
-            val pairs = ArrayList<Pair<String, String>>(batch.size)
-            batch.forEachIndexed { i, item ->
-                val translated = result.lines.getOrElse(i) { item.text }
-                cache[cacheKey(item.lang, item.text)] = translated
-                inFlight.remove(cacheKey(item.lang, item.text))
-                item.deferred.complete(translated)
-                pairs += item.text to translated
-            }
-            remember(lang, pairs)
-            batch.clear()
-        }
-    }
-
-    /** Cached translation of [text] into the CURRENT target language. */
-    fun getCached(text: String): String? = cached(cacheKey(targetLanguage, text))
-
-    fun isInFlight(text: String): Boolean = inFlight.containsKey(cacheKey(targetLanguage, text))
-
-    suspend fun translate(text: String): String = translate(text, targetLanguage)
-
-    private suspend fun translate(text: String, lang: String): String {
+    /** Must hold lifecycleLock. The deferred belongs to the manager, not any individual waiter. */
+    private fun claimLocked(owner: TranslationSession, text: String): Deferred<Pair<String, Boolean>> {
+        if (!isCurrent(owner)) return CompletableDeferred(text to false)
+        val lang = targetLanguage
         val key = cacheKey(lang, text)
-        cached(key)?.let { return it }
-        // If the same text is already queued (e.g. preTranslateWindow raced us), join it.
-        inFlight[key]?.let { return it.await() }
+        cached(key)?.let { return CompletableDeferred(it to true) }
+        inFlight[key]?.let { return it.deferred }
 
-        val deferred = CompletableDeferred<String>()
-        inFlight[key] = deferred
-        val depth = pendingCount.getAndIncrement()
-        if (depth == 0) {
+        val item = PendingItem(text, lang)
+        inFlight[key] = item
+        owner.queue.trySend(item)
+        hideTranslatingJob?.cancel()
+        if (!isTranslating) {
             isTranslating = true
             onTranslatingChanged?.invoke(true)
         }
-        queue.send(PendingItem(text, lang, deferred))
-        return try {
-            deferred.await()
-        } finally {
-            if (pendingCount.decrementAndGet() == 0) {
-                hideTranslatingJob?.cancel()
-                hideTranslatingJob = scope.launch {
-                    delay(1500)
-                    if (pendingCount.get() == 0) {
-                        isTranslating = false
-                        onTranslatingChanged?.invoke(false)
-                    }
+        if (isCurrent(owner) && owner.worker == null) {
+            val worker = scope.launch(start = CoroutineStart.LAZY) { processBatches(owner) }
+            owner.worker = worker
+            // Also runs if the parent scope was already cancelled before the worker could start.
+            worker.invokeOnCompletion {
+                synchronized(lifecycleLock) {
+                    if (session === owner) invalidateWorkLocked()
+                }
+            }
+            worker.start()
+        }
+        return item.deferred
+    }
+
+    private suspend fun processBatches(owner: TranslationSession) {
+        while (true) {
+            val batch = mutableListOf(owner.queue.receive())
+            // A single deadline works with both real and virtual coroutine clocks. Lookahead and
+            // live cues share this worker, so neither can send a duplicate/concurrent request.
+            withTimeoutOrNull(BATCH_WINDOW_MS) {
+                while (batch.size < CHUNK_LINES) batch += owner.queue.receive()
+            }
+            currentCoroutineContext().ensureActive()
+            val activeService = synchronized(lifecycleLock) {
+                if (!isCurrent(owner)) return
+                service
+            }
+            val lang = batch.first().lang
+            val texts = batch.map { it.text }
+            val result = try {
+                activeService.translateBatch(texts, lang, contextFor(texts, lang), contentTitle)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                TranslationResult(emptyList(), false, e.message ?: "Translation error")
+            }
+            currentCoroutineContext().ensureActive()
+            synchronized(lifecycleLock) {
+                // A cancelled HTTP implementation may still return. Never publish its cache,
+                // callback or completion into a newer mode/lifecycle.
+                if (!isCurrent(owner)) return
+                val pairs = batch.mapIndexed { i, item ->
+                    item.text to if (result.success) result.lines.getOrElse(i) { item.text } else item.text
+                }
+                if (result.success) {
+                    pairs.forEach { (text, translated) -> cache[cacheKey(lang, text)] = translated }
+                    remember(lang, pairs)
+                }
+                batch.forEachIndexed { i, item ->
+                    // Identity-aware removal is important if a reset re-queues the same text.
+                    inFlight.remove(cacheKey(item.lang, item.text), item)
+                    item.deferred.complete(pairs[i].second to result.success)
+                }
+                if (isCurrent(owner)) {
+                    scheduleIdleLocked(owner)
+                    onBatchResult?.invoke(result.success, result.errorMessage)
+                }
+            }
+            if (!result.success) delay(5_000L)
+        }
+    }
+
+    private fun scheduleIdleLocked(owner: TranslationSession) {
+        if (inFlight.isNotEmpty()) return
+        hideTranslatingJob?.cancel()
+        hideTranslatingJob = scope.launch {
+            delay(1500)
+            synchronized(lifecycleLock) {
+                if (isCurrent(owner) && inFlight.isEmpty() && isTranslating) {
+                    isTranslating = false
+                    onTranslatingChanged?.invoke(false)
                 }
             }
         }
     }
 
     /**
+     * Immediately releases all waiters and drains old queued work. Worker cancellation is
+     * cooperative: SubtitleTranslationService's blocking OkHttp execute() is NOT Call.cancel().
+     * The session guard also rejects non-cooperative/late responses; already-paid HTTP may finish.
+     */
+    private fun invalidateWorkLocked() {
+        val old = session
+        session = TranslationSession()
+        val abandoned = inFlight.values.toList()
+        inFlight.clear()
+        old.queue.cancel() // Unlike close(), cancel also discards every buffered item.
+        hideTranslatingJob?.cancel()
+        hideTranslatingJob = null
+        synchronized(recentLock) { recent.clear() }
+        old.worker?.cancel()
+        val wasTranslating = isTranslating
+        isTranslating = false
+        if (wasTranslating) onTranslatingChanged?.invoke(false)
+        abandoned.forEach { it.deferred.complete(it.text to false) }
+    }
+
+    /** Cached translation of [text] into the CURRENT target language. */
+    fun getCached(text: String): String? = cached(cacheKey(targetLanguage, text))
+
+    fun isInFlight(text: String): Boolean = synchronized(lifecycleLock) {
+        inFlight.containsKey(cacheKey(targetLanguage, text))
+    }
+
+    suspend fun translate(text: String): String = translateDetailed(text).first
+
+    /**
      * Clears what is on screen and what is queued. Translations stay cached: they are keyed by
      * target language and source text, so they are valid for any track, episode or re-watch, and
      * clearing them only paid for the same lines again.
      */
-    fun reset() {
+    fun reset() = synchronized(lifecycleLock) {
         bilingualBus.clear()
-        inFlight.clear()
-        synchronized(recentLock) { recent.clear() }
-        if (pendingCount.get() == 0) {
-            isTranslating = false
-            onTranslatingChanged?.invoke(false)
-        }
+        invalidateWorkLocked()
     }
 
     suspend fun preTranslateWindow(texts: List<String>) {
-        // The lookahead triggers fire whenever a text track renders cues — including tracks
-        // selected under the hood by "find best match" with AI translation off. Never spend
-        // API requests unless translation is actually active.
-        if (!isEnabled) return
-        // Bilingual subtitles: "Original only" / "Off" never need translations.
-        if (!displayMode.needsTranslation) return
-        // Path A (second embedded track) never translates.
-        if (bilingualSource != BilingualSource.AI_TRANSLATION) return
-        val lang = targetLanguage
-        val uncached = texts.distinct().filter { cached(cacheKey(lang, it)) == null && !inFlight.containsKey(cacheKey(lang, it)) }
-        if (uncached.isEmpty()) return
+        val (owner, uncached) = synchronized(lifecycleLock) {
+            if (!translationNeeded) return
+            val lang = targetLanguage
+            session to texts.distinct().filter { cached(cacheKey(lang, it)) == null }
+        }
         uncached.chunked(CHUNK_LINES).forEach { chunk ->
-            // Claim the lines so the real-time path joins this request instead of paying twice.
-            val claims = chunk.associateWith { CompletableDeferred<String>() }
-            claims.forEach { (t, d) -> inFlight.putIfAbsent(cacheKey(lang, t), d) }
-            val result = try {
-                service.translateBatch(chunk, lang, contextFor(chunk, lang), contentTitle)
-            } catch (e: CancellationException) {
-                claims.forEach { (t, d) -> inFlight.remove(cacheKey(lang, t), d); d.complete(t) }
-                throw e
+            val claims = synchronized(lifecycleLock) {
+                // Check the original lifecycle before EVERY chunk, including after off/on/reset.
+                if (!isCurrent(owner)) return
+                chunk.map { claimLocked(owner, it) }
             }
-            if (result.success) {
-                onBatchResult?.invoke(true, null)
-                val pairs = ArrayList<Pair<String, String>>(chunk.size)
-                chunk.forEachIndexed { i, text ->
-                    val tr = result.lines.getOrElse(i) { text }
-                    cache[cacheKey(lang, text)] = tr
-                    pairs += text to tr
-                }
-                remember(lang, pairs)
-                claims.forEach { (t, d) -> inFlight.remove(cacheKey(lang, t), d); d.complete(cache[cacheKey(lang, t)] ?: t) }
-            } else {
-                claims.forEach { (t, d) -> inFlight.remove(cacheKey(lang, t), d); d.complete(t) }
-                onBatchResult?.invoke(false, result.errorMessage)
-                delay(5_000L)
-                return
-            }
+            if (claims.map { it.await() }.any { !it.second }) return
         }
     }
 }
